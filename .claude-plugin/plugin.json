@@ -1,0 +1,10 @@
+{
+  "name": "regia",
+  "version": "0.8.1",
+  "description": "Regia di agenti: la principale coordina e delega, modello e sforzo decisi compito per compito, sciami di agenti Claude e Codex, regole di risparmio, in un pane accanto alla chat.",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Alessandro Russo"
+  }
+}

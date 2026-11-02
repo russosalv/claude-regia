@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Lancia un lavoro Codex per la mod regia (tool codex_avvia): nice, fino a 4 tentativi se il modello e "at capacity", righe
+# di inizio e fine in esegui.log. Con REGIA_RIPRENDI=<id sessione codex>
+# riprende quella sessione con il messaggio di <nome>.riprendi.md (codex_riprendi).
+# Uso: codex-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo> <esegui.log> [ramo-base]
+set -u
+n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; B=${7:-main}
+R=${REGIA_RIPRENDI:-}
+cd "$D" || exit 1
+# Senza modello decide la config di Codex.
+modello=()
+[ -n "$M" ] && modello=(-m "$M")
+export REGIA_NOME="$n"
+echo $$ > "$n.pid"
+if [ -n "$R" ]; then
+  # Il giro di prima resta in <nome>.storico.log; l'esito vuoto dice se questo giro ha risposto.
+  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
+  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
+  rm -f "$n.esito.md"
+fi
+echo "$(date +%H:%M) inizio $n" >> "$L"
+rc=1
+for t in 1 2 3 4; do
+  if [ -n "$R" ]; then
+    # resume non ha -C: la sessione si riprende dalla sua cartella.
+    ( cd "$W" && nice -n 10 codex exec resume "$R" --dangerously-bypass-approvals-and-sandbox "${modello[@]}" -c model_reasoning_effort="$S" -o "$D/$n.esito.md" - < "$D/$n.riprendi.md" > "$D/$n.log" 2>&1 )
+  else
+    nice -n 10 codex exec --dangerously-bypass-approvals-and-sandbox "${modello[@]}" -c model_reasoning_effort="$S" -C "$W" -o "$n.esito.md" - < "$n.prompt.md" > "$n.log" 2>&1
+  fi
+  rc=$?
+  if grep -qi "at capacity" "$n.log" && [ ! -s "$n.esito.md" ] && [ "$t" -lt 4 ]; then
+    echo "$(date +%H:%M) $n, riprovo ($t)" >> "$L"
+    sleep 180
+    continue
+  fi
+  break
+done
+id=$(grep -m1 -o 'session id: [0-9a-f-]*' "$n.log" | cut -d' ' -f3)
+if [ -n "$id" ]; then echo "$id" > "$n.sessione"; fi
+commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
+echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
+rm -f "$n.pid"

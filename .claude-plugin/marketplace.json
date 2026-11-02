@@ -1,0 +1,5 @@
+{
+  "name": "claude-regia",
+  "owner": { "name": "S.Alessandro Russo" },
+  "plugins": [{ "name": "regia", "source": "./" }]
+}

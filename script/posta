@@ -1,0 +1,177 @@
+#!/usr/bin/env -S python3 -I
+"""Posta fra agenti della mod regia (Claude Code): la casella e
+~/.claude/regia/posta/posta.jsonl, una riga JSON per messaggio o per cambio
+di stato. Solo libreria standard.
+
+  posta leggi <mio-nome>                     stampa i messaggi nuovi per me e li segna letti
+  posta invia <dest> "<testo>" --da <mio-nome>
+  posta elenco [<n>]                         gli ultimi messaggi, per chi guarda
+
+Indirizzi: principale (la sessione Claude che ti ha lanciato), utente,
+il nome di un subagente Claude o di un lavoro Codex. La sessione si legge da
+CLAUDE_CODE_SESSION_ID (o --sessione).
+
+Per la mod: `posta aggiungi` legge un messaggio JSON da stdin, `posta stato
+<id> <stato> [nota]` registra consegnato, letto o errore."""
+import fcntl
+import json
+import os
+import secrets
+import sys
+import time
+
+CASELLA = os.path.join(os.path.expanduser('~'), '.claude', 'regia', 'posta')
+FILE = os.path.join(CASELLA, 'posta.jsonl')
+STATI = ('nuovo', 'consegnato', 'letto', 'errore')
+MASSIMO_TESTO = 20000
+
+
+def errore(testo, codice=2):
+    print(f'posta: {testo}', file=sys.stderr)
+    sys.exit(codice)
+
+
+class Bloccata:
+    """Il file della casella aperto in aggiunta, con il lucchetto esclusivo."""
+
+    def __enter__(self):
+        os.makedirs(CASELLA, exist_ok=True)
+        self.f = open(FILE, 'a+', encoding='utf-8')
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def righe(self):
+        self.f.seek(0)
+        return self.f.read().splitlines()
+
+    def aggiungi(self, voce):
+        self.f.seek(0, os.SEEK_END)
+        self.f.write(json.dumps(voce, ensure_ascii=False) + '\n')
+        self.f.flush()
+
+    def __exit__(self, *_):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+def ora_ms():
+    return int(time.time() * 1000)
+
+
+def nuovo_id():
+    return f'{ora_ms():x}-{secrets.token_hex(3)}'
+
+
+def piega(righe):
+    """I messaggi per id, con l'ultimo stato registrato."""
+    messaggi = {}
+    for riga in righe:
+        try:
+            voce = json.loads(riga)
+        except ValueError:
+            continue
+        if not isinstance(voce, dict):
+            continue
+        if voce.get('t') == 'msg' and isinstance(voce.get('id'), str):
+            messaggi[voce['id']] = dict(voce)
+        elif voce.get('t') == 'stato' and voce.get('id') in messaggi and voce.get('stato') in STATI:
+            messaggi[voce['id']]['stato'] = voce['stato']
+    return list(messaggi.values())
+
+
+def valida_nome(nome, cosa):
+    if not nome or len(nome) > 120 or any(c in nome for c in '\n\r\t'):
+        errore(f'{cosa} non valido: {nome!r}')
+    return nome
+
+
+def messaggio(da, a, testo, sessione, via):
+    testo = testo.strip()
+    if not testo:
+        errore('il testo e vuoto')
+    if len(testo) > MASSIMO_TESTO:
+        errore(f'il testo supera {MASSIMO_TESTO} caratteri')
+    return {'t': 'msg', 'id': nuovo_id(), 'da': valida_nome(da, 'mittente'), 'a': valida_nome(a, 'destinatario'),
+            'testo': testo, 'ora': ora_ms(), 'sessione': sessione or None, 'stato': 'nuovo', 'via': via}
+
+
+def ora_breve(ms):
+    return time.strftime('%H:%M', time.localtime(ms / 1000))
+
+
+def opzione(argomenti, nome):
+    if nome not in argomenti:
+        return None, argomenti
+    i = argomenti.index(nome)
+    if i + 1 >= len(argomenti):
+        errore(f'manca il valore di {nome}')
+    return argomenti[i + 1], argomenti[:i] + argomenti[i + 2:]
+
+
+def leggi(argomenti):
+    if len(argomenti) != 1:
+        errore('uso: posta leggi <mio-nome>')
+    nome = valida_nome(argomenti[0], 'nome')
+    with Bloccata() as casella:
+        nuovi = [m for m in piega(casella.righe()) if m.get('a') == nome and m.get('stato') in ('nuovo', 'consegnato')]
+        for m in nuovi:
+            casella.aggiungi({'t': 'stato', 'id': m['id'], 'stato': 'letto', 'ora': ora_ms()})
+    if not nuovi:
+        print(f'nessun messaggio nuovo per {nome}')
+        return
+    for m in nuovi:
+        print(f"[{ora_breve(m.get('ora', 0))}] da {m.get('da')} (id {m['id']}):\n{m.get('testo', '')}\n")
+
+
+def invia(argomenti):
+    da, argomenti = opzione(argomenti, '--da')
+    sessione, argomenti = opzione(argomenti, '--sessione')
+    if da is None or len(argomenti) != 2:
+        errore('uso: posta invia <destinatario> "<testo>" --da <mio-nome>')
+    voce = messaggio(da, argomenti[0], argomenti[1], sessione or os.environ.get('CLAUDE_CODE_SESSION_ID'), 'posta')
+    with Bloccata() as casella:
+        casella.aggiungi(voce)
+    print(f"inviato a {voce['a']} (id {voce['id']})")
+
+
+def aggiungi(_argomenti):
+    try:
+        dati = json.loads(sys.stdin.read())
+    except ValueError as e:
+        errore(f'JSON non valido: {e}')
+    if not isinstance(dati, dict):
+        errore('atteso un oggetto JSON')
+    voce = messaggio(str(dati.get('da', '')), str(dati.get('a', '')), str(dati.get('testo', '')),
+                     dati.get('sessione'), str(dati.get('via', 'regia')))
+    if dati.get('stato') in STATI:
+        voce['stato'] = dati['stato']
+    with Bloccata() as casella:
+        casella.aggiungi(voce)
+    print(json.dumps(voce, ensure_ascii=False))
+
+
+def stato(argomenti):
+    if len(argomenti) not in (2, 3) or argomenti[1] not in STATI:
+        errore('uso: posta stato <id> <nuovo|consegnato|letto|errore> [nota]')
+    voce = {'t': 'stato', 'id': argomenti[0], 'stato': argomenti[1], 'ora': ora_ms()}
+    if len(argomenti) == 3:
+        voce['nota'] = argomenti[2][:500]
+    with Bloccata() as casella:
+        casella.aggiungi(voce)
+
+
+def elenco(argomenti):
+    n = int(argomenti[0]) if argomenti and argomenti[0].isdigit() else 20
+    with Bloccata() as casella:
+        messaggi = piega(casella.righe())
+    for m in messaggi[-n:]:
+        print(f"[{ora_breve(m.get('ora', 0))}] {m.get('da')} -> {m.get('a')} ({m.get('stato')}): {m.get('testo', '')[:200]}")
+
+
+COMANDI = {'leggi': leggi, 'invia': invia, 'elenco': elenco, 'aggiungi': aggiungi, 'stato': stato}
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2 or sys.argv[1] not in COMANDI:
+        print(__doc__)
+        sys.exit(0 if len(sys.argv) >= 2 and sys.argv[1] in ('-h', '--help', 'aiuto') else 2)
+    COMANDI[sys.argv[1]](sys.argv[2:])
