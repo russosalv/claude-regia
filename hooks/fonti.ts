@@ -170,6 +170,14 @@ export function leggiPidDellaSessione(
     if (esito.exitCode > 2) {
       throw new Error(`grep e terminato con codice ${esito.exitCode}`)
     }
+    // macOS non ha /proc (grep 2 senza uscita): l'ambiente dei propri processi si legge con `ps eww`.
+    if (esito.exitCode === 2 && esito.stdout === '') {
+      const ps = await $.process.run(['ps', 'eww', '-o', 'pid=,command=', '-p', pid.join(',')], { timeoutMs: 10_000 })
+      // ps: 1 se qualche pid non c'e piu.
+      if (ps.exitCode > 1) throw new Error(`ps e terminato con codice ${ps.exitCode}`)
+
+      return { dati: pidConSessioneDaPs(ps.stdout, sessioneId), avvisi: [] }
+    }
 
     return { dati: pidConSessione(esito.stdout, sessioneId), avvisi: [] }
   })
@@ -181,6 +189,17 @@ export function pidConSessione(uscita: string, sessioneId: string): Set<number> 
     .split('\0')
     .map(voce => /^\/proc\/(\d+)\/environ:[A-Z_]+=(.*)$/.exec(voce.trim()))
     .filter(m => m !== null && m[2] === sessioneId)
+    .map(m => Number(m?.[1]))
+
+  return new Set(pid)
+}
+
+/** Legge l'uscita di `ps eww -o pid=,command=` (macOS): pid in testa, ambiente in coda al comando. */
+export function pidConSessioneDaPs(uscita: string, sessioneId: string): Set<number> {
+  const pid = uscita
+    .split('\n')
+    .map(riga => /^\s*(\d+)\s(.*)$/.exec(riga))
+    .filter(m => m !== null && m[2].split(/\s+/).includes(`${VARIABILE_SESSIONE}=${sessioneId}`))
     .map(m => Number(m?.[1]))
 
   return new Set(pid)

@@ -11,7 +11,7 @@ import {
   parsePs,
   tokenizza,
 } from '../hooks/parsers'
-import { pidConSessione } from '../hooks/fonti'
+import { pidConSessione, pidConSessioneDaPs } from '../hooks/fonti'
 import { parseConfig, validaRegistro } from '../hooks/registro'
 
 const CODEX =
@@ -201,4 +201,17 @@ test('pidConSessione tiene solo i processi con il proprio id di sessione', () =>
 
   expect([...pidConSessione(uscita, 'mio')]).toEqual([10, 12])
   expect(pidConSessione('', 'mio').size).toBe(0)
+})
+
+test('pidConSessioneDaPs legge l\'ambiente di ps eww (macOS)', () => {
+  const uscita = [
+    '  10 codex exec -m x - REGIA_NOME=a CLAUDE_CODE_SESSION_ID=mio HOME=/u',
+    '  11 codex exec -m x - CLAUDE_CODE_SESSION_ID=altrui',
+    '12 node codex exec CLAUDE_CODE_SESSION_ID=mio',
+    '  13 codex exec CLAUDE_CODE_SESSION_ID=mio-ma-non-proprio',
+    '',
+  ].join('\n')
+
+  expect([...pidConSessioneDaPs(uscita, 'mio')]).toEqual([10, 12])
+  expect(pidConSessioneDaPs('', 'mio').size).toBe(0)
 })

@@ -4,6 +4,12 @@
 # riprende quella sessione con il messaggio di <nome>.riprendi.md (codex_riprendi).
 # Uso: codex-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo> <esegui.log> [ramo-base]
 set -u
+# codex installato con nvm non e nel PATH dei processi lanciati dalla mod: si cerca l'ultimo nvm.
+if ! command -v codex >/dev/null 2>&1; then
+  for d in $(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V -r); do
+    if [ -x "$d/codex" ]; then PATH="$d:$PATH"; export PATH; break; fi
+  done
+fi
 n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; B=${7:-main}
 R=${REGIA_RIPRENDI:-}
 cd "$D" || exit 1
