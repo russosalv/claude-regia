@@ -1,5 +1,5 @@
 // Il tool `codex_avvia`: scrive il prompt, lancia lo script del plugin
-// staccato dalla sessione (setsid nohup) e risponde subito con pid e percorsi.
+// staccato dalla sessione (setsid nohup, solo nohup su macOS) e risponde subito con pid e percorsi.
 
 import type { EngineInterface } from 'claude-code'
 

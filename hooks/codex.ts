@@ -175,7 +175,8 @@ export function argvLancio(script: string, argomenti: readonly string[]): string
   return [
     'bash',
     '-c',
-    'setsid nohup bash "$0" "$@" >/dev/null 2>&1 </dev/null & echo $!',
+    // macOS non ha setsid: basta nohup (lo script sopravvive comunque alla sessione).
+    'S=$(command -v setsid || true); $S nohup bash "$0" "$@" >/dev/null 2>&1 </dev/null & echo $!',
     script,
     ...argomenti,
   ]

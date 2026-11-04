@@ -47,7 +47,7 @@ test('codex_avvia lancia lo script staccato, con la sessione esportata, e rispon
   expect(testo).toMatch(/pid 4242/)
   expect(testo).toMatch(/sforzo low: indicato nella chiamata/)
   const lancio = amb.lanci.find(l => l.argv[0] === 'bash')
-  expect(lancio?.argv[2]).toMatch(/^setsid nohup bash/)
+  expect(lancio?.argv[2]).toContain('S=$(command -v setsid || true); $S nohup bash')
   expect(lancio?.argv.slice(3)).toEqual([
     BIN, 'prova', WORKTREE, `${HOME}/.claude/regia/codex/prova`, '', 'low', `${HOME}/.claude/regia/codex/esegui.log`,
   ])
