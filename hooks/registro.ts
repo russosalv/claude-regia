@@ -35,6 +35,10 @@ export type ConfigRegia = {
   ponytail: boolean
   /** Compiti di uno sciame che girano insieme, se la chiamata non lo dice. */
   sciameParallelo: number
+  /** La sorveglianza: agenti fermi e sveglia della principale col piano aperto (`/regia sveglia on|off`). */
+  sveglia: boolean
+  /** Minuti senza segni di vita dopo cui un agente in corso e considerato fermo. */
+  stalloMinuti: number
 }
 
 export const AGGIORNAMENTO_PREDEFINITO_SEC = 15
@@ -147,6 +151,15 @@ function campoBooleano(grezzo: unknown, nome: string, predefinito: boolean): Cam
   return { valore: predefinito, avvisi: [`config.json: "${nome}" deve essere true o false`] }
 }
 
+export const STALLO_PREDEFINITO_MIN = 30
+
+function campoStallo(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: STALLO_PREDEFINITO_MIN, avvisi: [] }
+  if (typeof grezzo === 'number' && Number.isFinite(grezzo) && grezzo >= 5 && grezzo <= 1440) return { valore: grezzo, avvisi: [] }
+
+  return { valore: STALLO_PREDEFINITO_MIN, avvisi: ['config.json: "stalloMinuti" deve essere un numero da 5 a 1440'] }
+}
+
 function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
   const modo = MODI_ORCHESTRA.find(m => m === grezzo)
   if (modo !== undefined) return { valore: modo, avvisi: [] }
@@ -189,6 +202,8 @@ export function parseConfig(
     risparmio: true,
     ponytail: true,
     sciameParallelo: SCIAME_PARALLELO_PREDEFINITO,
+    sveglia: true,
+    stalloMinuti: STALLO_PREDEFINITO_MIN,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
     return { config: predefinita, avvisi: ['config.json: atteso un oggetto'] }
@@ -203,6 +218,8 @@ export function parseConfig(
   const risparmio = campoBooleano(o.risparmio, 'risparmio', true)
   const ponytail = campoBooleano(o.ponytail, 'ponytail', true)
   const parallelo = campoParallelo(o.sciameParallelo)
+  const sveglia = campoBooleano(o.sveglia, 'sveglia', true)
+  const stallo = campoStallo(o.stalloMinuti)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
     aggiornamentoSecondi: secondi.valore ?? predefinita.aggiornamentoSecondi,
@@ -212,9 +229,11 @@ export function parseConfig(
     risparmio: risparmio.valore,
     ponytail: ponytail.valore,
     sciameParallelo: parallelo.valore,
+    sveglia: sveglia.valore,
+    stalloMinuti: stallo.valore,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

@@ -247,7 +247,7 @@ test('/regia doctor dice che cosa e attivo e perche non si applica', () => {
   expect(testoDoctor({ ...dati, haSuperficie: false })).toContain('NON si applica qui: sessione senza superficie')
   expect(testoDoctor({ ...dati, codex: undefined, repo: undefined })).toContain('Codex: NON trovato')
   expect(testoDoctor({ ...dati, config: parseConfig({ orchestra: 'off' }, HOME).config })).not.toContain('Attiva in questa')
-  expect(rigaModi(dati.config)).toBe('Orchestra stretta · modelli on · risparmio on — /regia doctor per i dettagli')
+  expect(rigaModi(dati.config)).toBe('Orchestra stretta · modelli on · risparmio on · sveglia on — /regia doctor per i dettagli')
 })
 
 test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', async ($, on) => {

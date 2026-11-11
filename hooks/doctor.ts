@@ -32,10 +32,10 @@ const SPIEGA_MODO: Readonly<Record<ModoOrchestra, string>> = {
 }
 
 /** Il modo nel riepilogo di `/regia`, in una riga. */
-export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio'>): string {
+export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio' | 'sveglia'>): string {
   const accesa = (v: boolean) => (v ? 'on' : 'off')
 
-  return `Orchestra ${c.orchestra} · modelli ${accesa(c.instradamento)} · risparmio ${accesa(c.risparmio)} — /regia doctor per i dettagli`
+  return `Orchestra ${c.orchestra} · modelli ${accesa(c.instradamento)} · risparmio ${accesa(c.risparmio)} · sveglia ${accesa(c.sveglia)} — /regia doctor per i dettagli`
 }
 
 function rigaOrchestra(d: DatiDoctor): string {

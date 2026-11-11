@@ -1,4 +1,4 @@
-// `/regia modelli|orchestra|risparmio [valore]`: mostra un'opzione e la cambia,
+// `/regia modelli|orchestra|risparmio|sveglia [valore]`: mostra un'opzione e la cambia,
 // scrivendola nella config. Vale subito: la config si rilegge a ogni uso.
 
 import type { EngineInterface } from 'claude-code'
@@ -9,7 +9,7 @@ import { messaggioErrore } from './parsers'
 import { MODI_ORCHESTRA } from './registro'
 import type { ConfigRegia } from './registro'
 
-type Opzione = { chiave: 'instradamento' | 'orchestra' | 'risparmio'; valori: Readonly<Record<string, boolean | string>> }
+type Opzione = { chiave: 'instradamento' | 'orchestra' | 'risparmio' | 'sveglia'; valori: Readonly<Record<string, boolean | string>> }
 
 const INTERRUTTORE = { on: true, off: false }
 
@@ -17,6 +17,7 @@ const OPZIONI: Readonly<Record<string, Opzione>> = {
   modelli: { chiave: 'instradamento', valori: INTERRUTTORE },
   orchestra: { chiave: 'orchestra', valori: Object.fromEntries(MODI_ORCHESTRA.map(m => [m, m])) },
   risparmio: { chiave: 'risparmio', valori: INTERRUTTORE },
+  sveglia: { chiave: 'sveglia', valori: INTERRUTTORE },
 }
 
 export type ArgomentiOpzione = { nome: string; valore?: boolean | string; isValoreSbagliato?: boolean }
@@ -63,6 +64,14 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
       `La principale: ${c.orchestra.toUpperCase()}.`,
       'stretta: coordina e delega, e le sue scritture sui file del progetto vengono rifiutate. guida: la stessa regola, senza rifiuti. off: lavora come vuole.',
       'Si cambia con /regia orchestra stretta|guida|off.',
+    ].join('\n')
+  }
+
+  if (nome === 'sveglia') {
+    return [
+      `Sorveglianza e sveglia: ${c.sveglia ? 'ACCESA' : 'SPENTA'}.`,
+      `Ogni minuto: un agente senza segni di vita da ${c.stalloMinuti} min e fermo (un Codex si ferma, un subagente Claude si segnala alla principale). Se la principale e ferma e il piano in scaletta ha voci aperte senza nessuno al lavoro, la regia la sveglia per andare avanti; senza progressi le sveglie si diradano e dopo 5 smettono.`,
+      'Si cambia con /regia sveglia on|off; la soglia con "stalloMinuti" in ~/.claude/regia/config.json.',
     ].join('\n')
   }
 

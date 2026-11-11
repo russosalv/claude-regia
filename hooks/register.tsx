@@ -13,6 +13,7 @@ import { comandoPonytail, installaDipendenze, leggiArgomentiPonytail } from './p
 import { contaToken, notaPasso, preparaAgent, sforzoDelPasso, suSpawn } from './modelli'
 import { ID_SEZIONE, motivoRifiuto, sezioniConOrchestra } from './orchestra'
 import { scalettaScrivi } from './scaletta'
+import { avviaSorveglianza, fermaSorveglianza, notaFinePrincipale, notaInizioPrincipale, notaPassoAgente } from './sorveglianza'
 import { avviaSciami, fermaSciami, giro, notaFine, sciameAggiungi, sciameAvvia, sciameFerma, sciameStato } from './sciame-motore'
 import { RIGHE_LOG, codaLog } from './dettaglio'
 import { leggiConfig, leggiCoda, leggiHome } from './fonti'
@@ -121,6 +122,7 @@ async function accendi($: EngineInterface): Promise<void> {
   avviaBattito($)
   avviaPostino($, () => void leggiOra($))
   avviaSciami($)
+  avviaSorveglianza($, () => read($, snapshot))
 }
 
 export const register: Register = on => {
@@ -128,7 +130,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'regia',
       description: 'Apre il pane Regia agenti e riassume lavori in corso, scaletta e fatti',
-      argumentHint: '[tutti | doctor | ponytail [on|off] | sciame | modelli [on|off] | orchestra [stretta|guida|off] | risparmio [on|off]]',
+      argumentHint: '[tutti | doctor | ponytail [on|off] | sciame | sveglia [on|off] | modelli [on|off] | orchestra [stretta|guida|off] | risparmio [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -151,6 +153,7 @@ export const register: Register = on => {
     fermaBattito()
     fermaPostino()
     fermaSciami()
+    fermaSorveglianza()
     $.ui.status(undefined)
 
     return next(e)
@@ -257,7 +260,14 @@ export const register: Register = on => {
   on('agent.spawn', ($, e, next) => suSpawn($, e, next)).catch(($, e, next) => next(e))
 
   // Come fa Vitals: ogni richiesta dice il modello e lo sforzo veri del subagente.
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) notaInizioPrincipale()
+
+    return next(e)
+  })
+
   on('turn.step', async function* ($, e, next) {
+    if (e.agentId !== undefined) notaPassoAgente(e.agentId, await $.clock.now())
     const sforzo = await sforzoDelPasso($, e.agentId).catch(() => undefined)
     const passo = sforzo === undefined ? e : { ...e, effort: sforzo as typeof e.effort }
     await notaPasso($, passo.agentId, passo.model, passo.effort).catch(() => undefined)
@@ -267,6 +277,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const esito = await next(e)
+    if (e.agentId === undefined) notaFinePrincipale(await $.clock.now(), e.reason)
     await contaToken($, e)
     if (e.agentId !== undefined) await notaFine($, e.agentId, e.reason, e.answer)
 

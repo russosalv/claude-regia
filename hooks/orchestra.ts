@@ -21,6 +21,7 @@ export const TESTO_ORCHESTRA = [
   '- Lavori indipendenti: piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
   '- Tre o piu compiti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo.',
   '- Compiti lunghi e autonomi fuori dalla sessione: `mcp__regia__codex_avvia`. Da fare per dopo: `mcp__regia__scaletta_scrivi`.',
+  '- Un piano di piu sviluppi: prima di partire scrivi ogni voce con `mcp__regia__scaletta_scrivi` e tienila aggiornata (`in_corso`, `fatto`, `bloccato` con il motivo). Porta avanti il piano fino in fondo senza chiedere il permesso a ogni voce: finche restano voci aperte e nessuno lavora, la regia ti risveglia.',
   '- Rispondi da solo, senza delegare, a domande e a chi chiede un parere. Se la persona ti chiede di fare una modifica tu stesso, dille di passare a `/regia orchestra guida`.',
 ].join('\n')
 

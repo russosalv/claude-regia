@@ -156,6 +156,8 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     risparmio: true,
     ponytail: true,
     sciameParallelo: 4,
+    sveglia: true,
+    stalloMinuti: 30,
   })
   expect(ok.avvisi).toEqual([])
 
