@@ -62,7 +62,7 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
   if (nome === 'orchestra') {
     return [
       `La principale: ${c.orchestra.toUpperCase()}.`,
-      'stretta: coordina e delega, e le sue scritture sui file del progetto vengono rifiutate. guida: la stessa regola, senza rifiuti. off: lavora come vuole.',
+      'La regola dipende dalla modalita (/regia long|medio|quick). guida: la regola nel prompt. stretta: in piu, in long le scritture della principale sui file del progetto vengono rifiutate. off: nessuna regola.',
       'Si cambia con /regia orchestra stretta|guida|off.',
     ].join('\n')
   }

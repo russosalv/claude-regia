@@ -7,7 +7,7 @@ import type { On } from 'claude-code'
 import { rigaModi, testoDoctor } from '../hooks/doctor'
 import { CHIAVE_DIPENDENZE, leggiArgomentiPonytail, statoDaImpostazioni } from '../hooks/ponytail'
 import { parseConfig } from '../hooks/registro'
-import { RIFIUTO_SCRITTURA, TESTO_ORCHESTRA, fileDaScrivere, isDelProgetto } from '../hooks/orchestra'
+import { RIFIUTO_SCRITTURA, TESTI_ORCHESTRA, fileDaScrivere, isDelProgetto } from '../hooks/orchestra'
 import { avvisoFine, conCompiti, conEsito, conLancio, creaSciame, daLanciare, ferma, isFinito, promptLavoratore } from '../hooks/sciame'
 import type { Sciame } from '../hooks/sciame'
 import { HOME, SESSIONE } from './fixture'
@@ -184,10 +184,13 @@ const scrittura = ($: Engine, extra: Record<string, unknown> = {}) =>
 
 const INPUT_PROMPT = { model: 'm', promptModel: 'm', outputStyle: null } as const
 
-test('in modo stretta la principale non scrive nel progetto; un subagente si', async ($, on) => {
-  ambiente(on)
+test('in modo stretta, solo in long, la principale non scrive nel progetto; un subagente si', async ($, on) => {
+  const amb = ambiente(on, { config: { orchestra: 'stretta' } })
   regola(on, ['terminal'])
 
+  // In medio (il predefinito) la principale lavora lei: niente rifiuti.
+  expect((await scrittura($)).deny).toBeUndefined()
+  amb.store.set(`regia.profilo.${SESSIONE}`, { profilo: 'long', isVia: false, aggiornatoMs: 1_700_000_000_000 })
   expect((await scrittura($)).deny).toBe(RIFIUTO_SCRITTURA)
   expect((await scrittura($, { agentId: 'a1' })).deny).toBeUndefined()
   expect((await scrittura($, { file_path: '/tmp/fuori.txt' })).deny).toBeUndefined()
@@ -200,7 +203,7 @@ test('modo guida: la regola nel prompt, nessun rifiuto. off: niente', async ($, 
   expect((await scrittura($)).deny).toBeUndefined()
   const r = await $.prompt.compose({ ...INPUT_PROMPT, surfaces: ['terminal'], tools: ['Agent'], traits: [] } as never)
   expect(r.sections.map(s => s.id)).toEqual(['intro', 'regia:orchestra'])
-  expect(r.sections[1]?.text).toBe(TESTO_ORCHESTRA)
+  expect(r.sections[1]?.text).toBe(TESTI_ORCHESTRA.medio)
 })
 
 test('senza superficie (claude -p, SDK) o senza Agent la regola non si applica', async ($, on) => {
@@ -229,6 +232,7 @@ test('/regia orchestra off spegne la regola e toglie i rifiuti, /regia orchestra
 
   await comando('orchestra stretta')
   expect(config().orchestra).toBe('stretta')
+  await comando('long')
   expect((await scrittura($)).deny).toBe(RIFIUTO_SCRITTURA)
 })
 
@@ -240,14 +244,15 @@ test('/regia doctor dice che cosa e attivo e perche non si applica', () => {
 
   const testo = testoDoctor(dati)
   expect(testo).toContain('Regia 1.2.3')
-  expect(testo).toContain('Orchestra: STRETTA')
+  expect(testo).toContain('Orchestra: GUIDA')
+  expect(testo).toContain('Modalita: MEDIO')
   expect(testo).toContain('Attiva in questa sessione')
   expect(testo).toContain('Ponytail non attivo')
   expect(testo).toContain('nessun file, valori predefiniti')
   expect(testoDoctor({ ...dati, haSuperficie: false })).toContain('NON si applica qui: sessione senza superficie')
   expect(testoDoctor({ ...dati, codex: undefined, repo: undefined })).toContain('Codex: NON trovato')
   expect(testoDoctor({ ...dati, config: parseConfig({ orchestra: 'off' }, HOME).config })).not.toContain('Attiva in questa')
-  expect(rigaModi(dati.config)).toBe('Orchestra stretta · modelli on · risparmio on · sveglia on — /regia doctor per i dettagli')
+  expect(rigaModi(dati.config, { profilo: 'long', isVia: true })).toBe('Modalita long (sei via) · orchestra guida · modelli on · risparmio on · sveglia on — /regia doctor per i dettagli')
 })
 
 test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', async ($, on) => {
@@ -257,7 +262,7 @@ test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', asyn
   const comando = (args: string) => $.command.run({ command: 'regia', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 } })
 
   expect((await comando('doctor')).text).toContain('Orchestra: GUIDA')
-  expect((await comando('')).text).toContain('Orchestra guida · modelli on · risparmio on')
+  expect((await comando('')).text).toContain('Modalita medio · orchestra guida · modelli on · risparmio on')
 })
 
 test('lo stato di Ponytail e gli argomenti del comando', () => {

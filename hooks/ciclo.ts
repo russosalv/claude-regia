@@ -11,23 +11,24 @@ import { configPredefinita } from './registro'
 
 type Ciclo = {
   isAvviato: boolean
-  isInLettura: boolean
+  /** La lettura in corso, se ce n'e una. */
+  lettura?: Promise<void>
   timer?: Timer
   contesto?: ContestoLettura
 }
 
-const ciclo: Ciclo = { isAvviato: false, isInLettura: false }
+const ciclo: Ciclo = { isAvviato: false }
 
-/** Una lettura alla volta: se una e ancora in corso, questa si salta. */
+/** Una lettura alla volta: se una e gia in corso, si aspetta quella. */
 export async function leggiOra($: EngineInterface): Promise<void> {
   const contesto = ciclo.contesto
-  if (contesto === undefined || ciclo.isInLettura) return
-  ciclo.isInLettura = true
-  try {
-    await aggiornaSicuro($, contesto)
-  } finally {
-    ciclo.isInLettura = false
-  }
+  if (contesto === undefined) return
+  if (ciclo.lettura !== undefined) return ciclo.lettura
+  ciclo.lettura = aggiornaSicuro($, contesto).finally(() => {
+    ciclo.lettura = undefined
+  })
+
+  return ciclo.lettura
 }
 
 /** Idempotente: legge la config, avvia il timer, fa la prima lettura. */

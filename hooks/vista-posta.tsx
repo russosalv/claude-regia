@@ -60,8 +60,10 @@ export type TastiScrittura = { onInvia: (testo: string) => void; onAnnulla: () =
 /** Il campo aperto da `✉ scrivi` (manda da utente) o `↻ riprendi` (riprende un Codex). */
 export function campoScrittura(ui: TavolaConCampo, s: RegiaScrittura, spazio: number, tasti: TastiScrittura) {
   const { Box, Text, Button, Input } = ui
-  const titolo = s.modo === 'posta' ? `✉ a ${s.etichetta}` : `↻ riprendi ${s.etichetta}`
-  const spiega = s.modo === 'posta' ? 'scrivi e premi Invio: parte da utente' : 'il messaggio con cui Codex riprende la sua sessione'
+  const titolo = s.modo === 'posta' ? `✉ a ${s.etichetta}` : s.modo === 'risposta' ? `✎ ${s.etichetta}` : `↻ riprendi ${s.etichetta}`
+  const spiega = s.modo === 'posta' ? 'scrivi e premi Invio: parte da utente'
+    : s.modo === 'risposta' ? 'la tua risposta: Invio la manda alla principale'
+      : 'il messaggio con cui Codex riprende la sua sessione'
   const larghezzaTitolo = Math.max(1, spazio - cellWidth('[ ✕ annulla ]') - 1)
 
   return (

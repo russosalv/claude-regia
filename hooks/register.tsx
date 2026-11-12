@@ -1,12 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { RegiaDettaglio, RegiaScrittura } from '../types/index'
+import type { RegiaDettaglio, RegiaDomanda, RegiaRiga, RegiaScrittura } from '../types/index'
 import { avvia, ferma, leggiOra } from './ciclo'
 import { codexAvvia } from './codex-avvia'
 import { codexRiprendi } from './codex-riprendi'
 import { comandoOpzione, leggiArgomentiOpzione } from './comando-opzioni'
 import { comandoDoctor, rigaModi } from './doctor'
+import { approfondisci, domandaScrivi, rispondiDomanda } from './domande'
+import { comandoProfilo, leggiArgomentiProfilo, leggiProfilo } from './profilo'
 import { inviaDaUtente, specchiaSendMessage, toolInvia, toolLeggi } from './posta-azioni'
 import { avviaPostino, fermaPostino, installaPosta, registraStrumenti } from './strumenti'
 import { comandoPonytail, installaDipendenze, leggiArgomentiPonytail } from './ponytail'
@@ -27,7 +29,7 @@ import { vistaRegia } from './vista'
 const snapshot = atom(
   { plugin: 'regia', key: 'snapshot' } as const,
   SNAPSHOT_VUOTO,
-  { shape: 'snapshot-4' },
+  { shape: 'snapshot-5' },
 )
 
 const vista = atom(
@@ -41,7 +43,7 @@ const NESSUN_DETTAGLIO: RegiaDettaglio = { nome: '', percorso: '', righe: [], le
 const dettaglio = atom(
   { plugin: 'regia', key: 'dettaglio' } as const,
   NESSUN_DETTAGLIO,
-  { shape: 'dettaglio-1' },
+  { shape: 'dettaglio-2' },
 )
 
 const NESSUNA_SCRITTURA: RegiaScrittura = { a: '', etichetta: '', modo: 'posta' }
@@ -49,7 +51,7 @@ const NESSUNA_SCRITTURA: RegiaScrittura = { a: '', etichetta: '', modo: 'posta' 
 const scrittura = atom(
   { plugin: 'regia', key: 'scrittura' } as const,
   NESSUNA_SCRITTURA,
-  { shape: 'scrittura-1' },
+  { shape: 'scrittura-2' },
 )
 
 const PANE = 'regia'
@@ -102,12 +104,68 @@ async function apriAgente($: EngineInterface, agenteId: string): Promise<void> {
   }
 }
 
-/** Il campo del pane: manda la posta da utente, o riprende un Codex. */
+/** I fatti del piano aperti o chiusi nel pane: vive col modulo, come una preferenza di vista. */
+let isFattiAperti = false
+
+/** Una voce del piano nel dettaglio del pane: la sua descrizione. */
+async function apriVoce($: EngineInterface, r: RegiaRiga): Promise<void> {
+  await update($, dettaglio, () => ({
+    tipo: 'voce' as const,
+    nome: r.nome,
+    percorso: [r.fase, r.stato.replace('_', ' '), r.esecutore === '—' ? undefined : r.esecutore].filter(x => x !== undefined).join(' · '),
+    righe: [
+      r.descrizione ?? 'Nessuna descrizione: la principale non l\'ha scritta (scaletta_scrivi con descrizione).',
+      ...(r.note === undefined ? [] : ['', `Note: ${r.note}`]),
+    ],
+    lettoMs: 0,
+  }))
+}
+
+/** Una domanda nel dettaglio del pane, con i tasti per rispondere. */
+async function apriDomanda($: EngineInterface, d: RegiaDomanda): Promise<void> {
+  await update($, dettaglio, () => ({
+    tipo: 'domanda' as const,
+    nome: d.titolo,
+    percorso: `aperta alle ${new Date(d.creataMs).toTimeString().slice(0, 5)}`,
+    righe: [d.contesto, ...(d.raccomandazione === undefined ? [] : ['', `La principale consiglia: ${d.raccomandazione}`])],
+    lettoMs: 0,
+    domanda: d,
+  }))
+}
+
+/** Risponde dal pane a una domanda e torna al cruscotto. */
+async function rispondi($: EngineInterface, d: RegiaDomanda, testo: string): Promise<void> {
+  try {
+    await rispondiDomanda($, d, testo)
+    await update($, dettaglio, () => NESSUN_DETTAGLIO)
+    $.ui.toast(`regia: risposta mandata alla principale (${d.titolo})`)
+  } catch (errore) {
+    $.ui.toast(`regia: risposta non mandata (${messaggioErrore(errore)})`)
+  }
+  await leggiOra($)
+}
+
+/** Un agente che aiuta la persona a capire la domanda; la sua conversazione si apre accanto. */
+async function approfondisciDomanda($: EngineInterface, d: RegiaDomanda): Promise<void> {
+  try {
+    $.ui.toast(`regia: lancio un agente su "${d.titolo}"…`)
+    await apriAgente($, await approfondisci($, d))
+  } catch (errore) {
+    $.ui.toast(`regia: approfondimento non partito (${messaggioErrore(errore)})`)
+  }
+  void leggiOra($)
+}
+
+/** Il campo del pane: manda la posta da utente, riprende un Codex o risponde a una domanda. */
 async function inviaScrittura($: EngineInterface, testo: string): Promise<void> {
   const aperta = await read($, scrittura)
   if (aperta.a === '' || testo.trim() === '') return
   await update($, scrittura, () => NESSUNA_SCRITTURA)
-  if (aperta.modo === 'posta') {
+  if (aperta.modo === 'risposta') {
+    const d = (await read($, snapshot)).domande.find(x => x.id === aperta.a)
+    if (d === undefined) $.ui.toast('regia: la domanda non e piu aperta')
+    else await rispondi($, d, testo)
+  } else if (aperta.modo === 'posta') {
     await inviaDaUtente($, aperta.a, testo)
   } else {
     const esito = await codexRiprendi($, { nome: aperta.a, messaggio: testo })
@@ -125,12 +183,24 @@ async function accendi($: EngineInterface): Promise<void> {
   avviaSorveglianza($, () => read($, snapshot))
 }
 
+function tastiDomanda($: EngineInterface, d: RegiaDomanda) {
+  return {
+    onOpzione: (i: number) => void rispondi($, d, `Opzione ${i + 1}: ${d.opzioni[i] ?? ''}`),
+    onRispondi: () => {
+      void update($, dettaglio, () => NESSUN_DETTAGLIO)
+      void update($, scrittura, () => ({ a: d.id, etichetta: d.titolo, modo: 'risposta' as const }))
+    },
+    onApprofondisci: () => void approfondisciDomanda($, d),
+    onDecidiTu: () => void rispondi($, d, 'Decidi tu: segui la tua raccomandazione.'),
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'regia',
       description: 'Apre il pane Regia agenti e riassume lavori in corso, scaletta e fatti',
-      argumentHint: '[tutti | doctor | ponytail [on|off] | sciame | sveglia [on|off] | modelli [on|off] | orchestra [stretta|guida|off] | risparmio [on|off]]',
+      argumentHint: '[long|medio|quick [obiettivo] | via | qui | tutti | doctor | sciame | sveglia [on|off] | modelli [on|off] | orchestra [stretta|guida|off] | risparmio [on|off] | ponytail [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -198,6 +268,13 @@ export const register: Register = on => {
 
     return esito
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'scaletta_scrivi: errore interno della mod regia' }))
+
+  on('tool.call', { tool: 'mcp__regia__domanda_scrivi' }, async ($, e) => {
+    const esito = await domandaScrivi($, e)
+    void leggiOra($)
+
+    return esito
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'domanda_scrivi: errore interno della mod regia' }))
 
   on('tool.call', { tool: 'mcp__regia__sciame_avvia' }, async ($, e) => {
     const esito = await sciameAvvia($, e)
@@ -286,6 +363,14 @@ export const register: Register = on => {
 
   on('command.run', { command: 'regia' }, async ($, e) => {
     if (e.args.trim().toLowerCase() === 'doctor') return { text: await comandoDoctor($) }
+    const profilo = leggiArgomentiProfilo(e.args)
+    if (profilo !== undefined) {
+      const testo = await comandoProfilo($, profilo)
+      await $.ui.open({ id: PANE, title: TITOLO }).catch(() => undefined)
+      await accendi($)
+
+      return { text: testo }
+    }
     const ponytail = leggiArgomentiPonytail(e.args)
     if (ponytail !== undefined) return { text: await comandoPonytail($, ponytail) }
     const opzione = leggiArgomentiOpzione(e.args)
@@ -308,7 +393,7 @@ export const register: Register = on => {
     await leggiOra($)
 
     const home = await leggiHome($)
-    const modi = home === undefined ? [] : [rigaModi((await leggiConfig($, home)).dati)]
+    const modi = home === undefined ? [] : [rigaModi((await leggiConfig($, home)).dati, await leggiProfilo($))]
 
     return { text: [riepilogoTestuale(await read($, snapshot), scelta), ...modi].join('\n') }
   })
@@ -343,6 +428,16 @@ export const register: Register = on => {
         onInvia: testo => void inviaScrittura($, testo),
         onAnnulla: () => void update($, scrittura, () => NESSUNA_SCRITTURA),
       },
+      piano: {
+        apriVoce: r => void apriVoce($, r),
+        apriDomanda: d => void apriDomanda($, d),
+        isFattiAperti,
+        onFatti: () => {
+          isFattiAperti = !isFattiAperti
+          $.ui.invalidate('ui.render')
+        },
+      },
+      ...(aperto.domanda === undefined ? {} : { tastiDomanda: tastiDomanda($, aperto.domanda) }),
     })
   })
 }

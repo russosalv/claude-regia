@@ -2,11 +2,13 @@
 
 Mod di Claude Code per lavorare da orchestratore: la conversazione principale coordina, gli agenti eseguono. Funziona da sola su qualsiasi PC e progetto, senza altri plugin e senza regole nel `CLAUDE.md`.
 
-- **Delega davvero.** La regola viaggia con la mod: una sezione del prompt di sistema e, in modo `stretta`, il rifiuto delle scritture della principale sui file del progetto.
+- **Tre modalita.** `/regia long` per gli sviluppi lunghi (la principale orchestra e fa le tue veci), `/regia medio` (lavora lei e delega i pezzi indipendenti), `/regia quick` (un solo agente su un modello piccolo). La regola viaggia con la mod, come sezione del prompt di sistema.
+- **Domande con il loro contesto.** Ogni decisione che spetta a te arriva con a che punto si e, le opzioni e la raccomandazione: nel pane, con i tasti per rispondere o approfondire con un agente, e come notifica se non sei al PC.
+- **Il piano come tasklist.** Le voci con la descrizione della macro-attivita, raggruppate per fase, le fatte in un gruppo che si apre.
 - **Modello e sforzo per compito.** Nessuna tabella decisa in anticipo: a ogni chiamata ad Agent la mod guarda il compito vero. Chi fallisce riprova un gradino sopra.
 - **Sciami.** `sciame_avvia` manda agenti Claude e Codex su una lavagna con dipendenze, parallelismo e posta fra loro.
 - **Risparmio.** Regole di sobrieta e rapporti brevi nei prompt dei delegati (o Ponytail, se c'e), tool che non pesano sul prompt.
-- **Cruscotto.** Un pane fisso accanto alla chat: **IN CORSO**, **IN SCALETTA**, **FATTI**, con modello, sforzo, durata e token di ognuno.
+- **Cruscotto.** Un pane fisso accanto alla chat: **PER TE** (le domande), **PIANO**, poi **IN CORSO**, **IN SCALETTA**, **FATTI**, con modello, sforzo, durata e token di ognuno.
 
 ## Installazione
 
@@ -23,6 +25,10 @@ Codex CLI serve solo per i lavori Codex; python3 solo per la CLI `posta`. Nessun
 | Comando | |
 |---|---|
 | `/regia` | apre il pane sulla **sessione**, con un riepilogo testuale |
+| `/regia long [obiettivo]` | modalita per gli sviluppi lunghi; con un obiettivo parte subito |
+| `/regia medio [obiettivo]` | modalita predefinita: la principale lavora e delega i pezzi indipendenti |
+| `/regia quick [obiettivo]` | un solo agente, la principale passa a `quickModello` (sonnet); uscendo torna il modello di prima |
+| `/regia via` / `/regia qui` | non sei al PC: domande e piano fermo o finito ti arrivano come notifica |
 | `/regia tutti` | il pane su **tutta la macchina** |
 | `/regia doctor` | che cosa e attivo adesso: modalita, versione, Ponytail, Codex, config |
 | `/regia ponytail [on\|off]` | se Ponytail e attivo; `on` lo installa ora, `off` evita che lo installi la mod |
@@ -32,15 +38,48 @@ Codex CLI serve solo per i lavori Codex; python3 solo per la CLI `posta`. Nessun
 | `/regia modelli [on\|off]` | modello e sforzo decisi per compito |
 | `/regia risparmio [on\|off]` | regole di risparmio nei prompt dei delegati |
 
-Senza valore, gli ultimi tre mostrano lo stato; anche `/regia` riassume le modalita in una riga. I cambi valgono subito per tutte le sessioni.
+Senza valore, gli ultimi tre mostrano lo stato; anche `/regia` riassume le modalita in una riga. Le modalita (`long`, `medio`, `quick`, `via`, `qui`) valgono per la sessione e restano anche se la riprendi; le altre opzioni valgono subito per tutte le sessioni.
+
+## Le modalita
+
+| | long | medio (predefinita) | quick |
+|---|---|---|---|
+| La principale | orchestra e fa le tue veci; le cose rapide le fa lei | lavora lei, delega pezzi indipendenti e ricerche ampie | lavora da sola, niente subagenti |
+| Piano in scaletta | obbligatorio, con descrizione e fase | se il lavoro ha piu passi | no |
+| Sorveglianza | agenti fermi e sveglia della principale | solo agenti fermi | spenta |
+| Domande | `domanda_scrivi`, nel pane, notifica se sei via | come long | in chat, col contesto |
+| Modello della principale | il tuo | il tuo | `quickModello` (predefinito `sonnet`, in config) |
+
+In ogni modalita la regola chiede che ogni domanda stia in piedi da sola: mai "per la domanda 1 cosa facciamo?", ma a che punto si e, che cosa si decide, le opzioni con le conseguenze e la raccomandazione, in due o tre righe.
+
+Il cambio di modello in quick e un `/model` che la mod lancia appena finito il comando; se il motore non lo accetta un toast dice di scriverlo a mano.
+
+## Domande per te
+
+`domanda_scrivi` (id, titolo, contesto, opzioni, raccomandazione) registra una decisione che spetta a te, in `~/.claude/regia/domande.json`. Nel pane, sezione **PER TE**, il tasto `▸` apre la domanda col contesto e i tasti:
+
+- una per opzione: la risposta va alla principale come messaggio e la domanda si chiude;
+- **rispondi a parole**: un campo in cima al pane;
+- **approfondisci con un agente**: parte un subagente che conosce la domanda, ti spiega le opzioni (in sola lettura, senza decidere) e la sua conversazione si apre accanto, per fargli domande;
+- **decida la principale**: segue la sua raccomandazione.
+
+Se rispondi in chat la principale chiude la domanda da se. Mentre una domanda aspetta, la principale porta avanti cio che non dipende da essa; la sveglia glielo ricorda.
+
+## Notifiche
+
+Partono con `$.ui.notify` (il tuo canale di notifica, o l'app collegata) solo quando non sei davanti alla sessione: dopo `/regia via`, o quando la sessione e aperta anche su un'altra superficie (remote-control, app). Arrivano per una domanda nuova, per il piano finito e per il piano fermo dopo 5 sveglie senza progressi. `/regia qui` le spegne.
+
+## Il piano
+
+`scaletta_scrivi` accetta `descrizione` (la macro-attivita spiegata a te) e `fase`. Nel pane, sezione **PIANO**: le voci aperte raggruppate per fase, le fatte chiuse in `▸ N fatte`; `▸` su una voce ne apre la descrizione. Una voce aggiornata resta al suo posto. Con il piano nel suo riquadro, le sue voci non si ripetono nelle tabelle degli agenti.
 
 ## La principale delega
 
 `/regia orchestra`:
 
-- **`stretta`** (predefinito): la sezione nel prompt, piu il rifiuto di `Edit`, `Write` e `NotebookEdit` della conversazione principale sui file del repository. Il messaggio di rifiuto dice al modello di delegare. Restano liberi i subagenti, i file fuori dal repository e `.claude/` (impostazioni, memoria).
-- **`guida`**: solo la sezione nel prompt. Da usare quando vuoi che la principale tocchi un file da sola.
-- **`off`**: niente.
+- **`guida`** (predefinito): la regola della modalita nel prompt.
+- **`stretta`**: in piu, in modalita long, il rifiuto di `Edit`, `Write` e `NotebookEdit` della conversazione principale sui file del repository. Il messaggio di rifiuto dice al modello di delegare. Restano liberi i subagenti, i file fuori dal repository e `.claude/` (impostazioni, memoria).
+- **`off`**: nessuna regola.
 
 Non si applica senza superficie (`claude -p`, SDK: script e servizi fanno da se), senza il tool Agent, ne ai subagenti. I comandi lanciati con Bash non si possono distinguere: lanciare test o fare un commit la principale non deve, ma lo dice solo il prompt.
 
@@ -83,7 +122,7 @@ Limiti: l'unione dei rami resta a un delegato della principale; se la sessione s
 Una sessione lasciata sola (la notte) non deve fermarsi a meta piano. Ogni minuto la mod guarda la sessione:
 
 - **Agenti fermi.** Un lavoro in corso senza segni di vita da `stalloMinuti` (predefinito 30, in config) e fermo. Per un Codex conta l'ultima scrittura del suo log o, se il log tace (durante un comando lungo Codex non scrive su stderr), del suo file di sessione `~/.codex/sessions/.../rollout-*-<id>.jsonl`, che Codex aggiorna a ogni attesa del comando: se tacciono entrambi, la mod uccide il `codex exec`, lo script scrive `fine` con exit diverso da 0 e, se era di uno sciame, lo sciame lo rilancia un gradino sopra. Per un subagente Claude conta l'ultimo passo (`turn.step`): una mod non puo fermarlo, quindi lo segnala alla principale perche usi `TaskStop` e rilanci il compito. Ogni stallo si segnala una volta.
-- **Sveglia della principale.** Se la principale non ha un turno in corso da 3 minuti, il piano in scaletta ha voci aperte (`scaletta` o `in_corso`) e nessun agente lavora (o un lavoro e finito senza che lei lo abbia visto), la mod le manda un turno: le voci aperte e l'ordine di andare avanti da sola, segnando `bloccato` cio che non puo fare. Se l'ultimo turno era finito per un errore dell'API (limiti, rete), glielo dice e lei riprende.
+- **Sveglia della principale** (solo in modalita long; in medio la sorveglianza guarda solo gli agenti fermi, in quick e spenta). Se la principale non ha un turno in corso da 3 minuti, il piano in scaletta ha voci aperte (`scaletta` o `in_corso`) e nessun agente lavora (o un lavoro e finito senza che lei lo abbia visto), la mod le manda un turno: le voci aperte e l'ordine di andare avanti da sola, segnando `bloccato` cio che non puo fare. Se l'ultimo turno era finito per un errore dell'API (limiti, rete), glielo dice e lei riprende.
 - **Niente giri a vuoto.** Senza progressi (nessuna voce o lavoro che cambia stato) l'attesa raddoppia a ogni sveglia, 3, 6, 12, 24, 48 minuti; dopo 5 la mod smette e avvisa con un toast. Un progresso la riapre. Se nel campo del prompt c'e una bozza, la mod non passa davanti alla persona. Se fermi la principale con Esc, la mod non la sveglia piu (ne le riferisce gli stalli) finche non le scrivi tu.
 
 Perche funzioni il piano deve stare in scaletta: la regola dell'orchestratore lo chiede (ogni voce con `scaletta_scrivi`, aggiornata a ogni passo). Vale solo con una superficie (non `claude -p`). `/regia sveglia off` la spegne.
@@ -183,7 +222,7 @@ Una casella sola, `~/.claude/regia/posta/posta.jsonl`: una riga JSON per messagg
 
 ## Scaletta
 
-Il tool `scaletta_scrivi(id, titolo, stato, note)` scrive in `~/.claude/regia/registro.json`, che il pane legge: `stato` e `scaletta`, `in_corso`, `fatto`, `bloccato`, oppure `rimossa` per togliere la voce. Ogni voce ricorda la sessione che l'ha scritta; quelle aggiunte a mano nel file, senza sessione, valgono per tutte.
+Il tool `scaletta_scrivi(id, titolo, stato, descrizione, fase, note)` scrive in `~/.claude/regia/registro.json`, che il pane legge: `stato` e `scaletta`, `in_corso`, `fatto`, `bloccato`, oppure `rimossa` per togliere la voce. Ogni voce ricorda la sessione che l'ha scritta; quelle aggiunte a mano nel file, senza sessione, valgono per tutte.
 
 ## Vista "questa sessione": come si decide che cos'è mio
 
@@ -237,11 +276,12 @@ Per ogni riga: nome del lavoro, esecutore (`claude` o `codex`), modello (con l'e
      "aggiornamentoSecondi": 15,
      "instradamento": true,
      "modelli": { "mio-agente": "opus" },
-     "orchestra": "stretta",
+     "orchestra": "guida",
      "risparmio": true,
      "sciameParallelo": 4,
      "sveglia": true,
      "stalloMinuti": 30,
+     "quickModello": "sonnet",
      "codexModello": "nome-del-modello"
    }
    ```

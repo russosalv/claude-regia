@@ -4,6 +4,8 @@ import type { EngineInterface } from 'claude-code'
 
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
+import { PROFILO_PREDEFINITO, leggiProfilo } from './profilo'
+import type { StatoProfilo } from './profilo'
 import { messaggioErrore } from './parsers'
 import type { ConfigRegia, ModoOrchestra } from './registro'
 import { contaSciamiAttivi } from './sciame-motore'
@@ -22,20 +24,22 @@ export type DatiDoctor = {
   repo?: string
   /** La prima riga di `--version`; `undefined` se il comando non c'e. */
   codex?: string
+  /** Modalita e presenza della sessione; senza, i predefiniti. */
+  profilo?: StatoProfilo
   python?: string
 }
 
 const SPIEGA_MODO: Readonly<Record<ModoOrchestra, string>> = {
-  stretta: 'la principale delega, e le sue scritture sui file del progetto vengono rifiutate',
-  guida: 'la principale e invitata a delegare, senza rifiuti',
-  off: 'la principale lavora come vuole',
+  stretta: 'la regola della modalita nel prompt; in long le scritture della principale sui file del progetto vengono rifiutate',
+  guida: 'la regola della modalita nel prompt, senza rifiuti',
+  off: 'nessuna regola: la principale lavora come vuole',
 }
 
 /** Il modo nel riepilogo di `/regia`, in una riga. */
-export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio' | 'sveglia'>): string {
+export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio' | 'sveglia'>, p: Pick<StatoProfilo, 'profilo' | 'isVia'>): string {
   const accesa = (v: boolean) => (v ? 'on' : 'off')
 
-  return `Orchestra ${c.orchestra} · modelli ${accesa(c.instradamento)} · risparmio ${accesa(c.risparmio)} · sveglia ${accesa(c.sveglia)} — /regia doctor per i dettagli`
+  return `Modalita ${p.profilo}${p.isVia ? ' (sei via)' : ''} · orchestra ${c.orchestra} · modelli ${accesa(c.instradamento)} · risparmio ${accesa(c.risparmio)} · sveglia ${accesa(c.sveglia)} — /regia doctor per i dettagli`
 }
 
 function rigaOrchestra(d: DatiDoctor): string {
@@ -55,6 +59,7 @@ export function testoDoctor(d: DatiDoctor): string {
   return [
     `Regia ${d.versione ?? '(versione illeggibile)'} — ${d.radice}`,
     '',
+    `Modalita: ${(d.profilo ?? PROFILO_PREDEFINITO).profilo.toUpperCase()}${d.profilo?.isVia === true ? ', sei via: notifiche accese' : ''} (/regia long|medio|quick, /regia via|qui).`,
     rigaOrchestra(d),
     `Modello e sforzo per compito: ${c.instradamento ? 'ACCESI — li sceglie haiku guardando il compito' : 'SPENTI — decide il motore'}${Object.keys(c.modelli).length > 0 ? `; fissati in config: ${Object.keys(c.modelli).join(', ')}` : ''}.`,
     `Risparmio: ${c.risparmio ? 'ACCESO' : 'SPENTO'} — ${d.isPonytail ? 'Ponytail attivo' : 'Ponytail non attivo'}${c.risparmio ? (d.isPonytail ? ', la mod aggiunge il rapporto breve' : ', la mod aggiunge sobrieta e rapporto breve (/regia ponytail on per installarlo)') : ''}.`,
@@ -64,7 +69,7 @@ export function testoDoctor(d: DatiDoctor): string {
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
     '',
-    'Si cambia con /regia orchestra stretta|guida|off, /regia modelli on|off, /regia risparmio on|off.',
+    'Si cambia con /regia long|medio|quick, /regia orchestra stretta|guida|off, /regia modelli on|off, /regia risparmio on|off.',
   ].join('\n')
 }
 
@@ -95,7 +100,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
     const home = await leggiHome($)
     if (home === undefined) return 'regia doctor: HOME non definita, non trovo la config.'
     const percorsoConfig = `${home}/.claude/regia/config.json`
-    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, codex, python] = await Promise.all([
+    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, codex, python, profilo] = await Promise.all([
       versioneMod($),
       leggiConfig($, home),
       $.fs.exists(percorsoConfig),
@@ -106,6 +111,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       $.session.repo().catch(() => undefined),
       versioneDi($, 'codex'),
       versioneDi($, 'python3'),
+      leggiProfilo($),
     ])
 
     return testoDoctor({
@@ -122,6 +128,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       repo: repo?.root,
       codex,
       python,
+      profilo,
     })
   } catch (errore) {
     return `regia doctor: ${messaggioErrore(errore)}`

@@ -15,6 +15,7 @@ import {
   scriviMemoria,
 } from './fonti'
 import type { Memoria } from './fonti'
+import { domandeAperte, leggiDomande } from './domande'
 import { leggiMemoriaAgenti } from './memoria-agenti'
 import { leggiCasella } from './posta-io'
 import { compitiInAttesa } from './sciame-motore'
@@ -36,7 +37,7 @@ import type { ConfigRegia } from './registro'
 const snapshot = atom(
   { plugin: 'regia', key: 'snapshot' } as const,
   SNAPSHOT_VUOTO,
-  { shape: 'snapshot-4' },
+  { shape: 'snapshot-5' },
 )
 
 export type ContestoLettura = {
@@ -55,7 +56,7 @@ export async function aggiorna(
   contesto: ContestoLettura,
 ): Promise<void> {
   const { home, config } = contesto
-  const [oraMs, agenti, processi, registro, log, posta] = await Promise.all([
+  const [oraMs, agenti, processi, registro, log, posta, domande] = await Promise.all([
     $.clock.now(),
     leggiAgenti($),
     leggiProcessi($),
@@ -64,6 +65,7 @@ export async function aggiorna(
       home === undefined ? [] : config.codexLogs.map(p => leggiLog($, p, home)),
     ),
     home === undefined ? undefined : leggiCasella($, home).catch(e => ({ dati: [], avvisi: [`posta: ${messaggioErrore(e)}`] })),
+    home === undefined ? undefined : leggiDomande($, home),
   ])
   const precedente = await read($, snapshot)
   const sessione = await attribuzione($, processi.dati)
@@ -78,6 +80,7 @@ export async function aggiorna(
     ...(registro?.avvisi ?? []),
     ...log.flatMap(l => l.avvisi),
     ...(posta?.avvisi ?? []),
+    ...(domande?.avvisi ?? []),
   ]
   const prossimo = costruisciSnapshot({
     oraMs,
@@ -98,6 +101,7 @@ export async function aggiorna(
     avvisi,
     pidMiei: sessione.pidMiei,
     nomiSessione: new Set(sessione.nomi),
+    domande: domandeAperte(domande?.dati ?? [], sessione.sessioneId),
   })
   const avvisiMemoria = await ricorda($, sessione, agenti.dati ?? [], prossimo)
   const finale = avvisiMemoria.length === 0 ? prossimo : { ...prossimo, avvisi: [...prossimo.avvisi, ...avvisiMemoria] }

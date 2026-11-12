@@ -199,13 +199,15 @@ export function pidConSessioneDaPs(uscita: string, sessioneId: string): Set<numb
   const pid = uscita
     .split('\n')
     .map(riga => /^\s*(\d+)\s(.*)$/.exec(riga))
-    .filter(m => m !== null && m[2].split(/\s+/).includes(`${VARIABILE_SESSIONE}=${sessioneId}`))
+    .filter(m => m !== null && (m[2] ?? '').split(/\s+/).includes(`${VARIABILE_SESSIONE}=${sessioneId}`))
     .map(m => Number(m?.[1]))
 
   return new Set(pid)
 }
 
 const CHIAVE_MEMORIA = 'regia.sessione.'
+/** La modalita e la presenza della persona per sessione (`profilo.ts`). */
+export const CHIAVE_PROFILO = 'regia.profilo.'
 const SCADENZA_MEMORIA_MS = 30 * 24 * 3600 * 1000
 
 function nomiDaMemoria(grezzo: unknown): string[] {
@@ -246,7 +248,7 @@ export async function scriviMemoria(
 /** Toglie dallo store le memorie (lavori e agenti) di sessioni ferme da oltre 30 giorni. */
 export async function potaMemorie($: EngineInterface, oraMs: number): Promise<string[]> {
   try {
-    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI))
+    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI) || k.startsWith(CHIAVE_PROFILO))
     await Promise.all(
       chiavi.map(async chiave => {
         const voce = (await $.store.get(chiave)) as { aggiornatoMs?: unknown } | { creatoMs?: unknown }[] | undefined

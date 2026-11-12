@@ -8,7 +8,7 @@ import { messaggioErrore } from './parsers'
 import { validaRegistro } from './registro'
 import type { StatoRegistro, VoceRegistro } from './registro'
 
-export const DESCRIZIONE_SCALETTA = 'Aggiunge, aggiorna o toglie una voce della scaletta di regia (i lavori da fare, nel pane e nella status line). stato: scaletta, in_corso, fatto, bloccato, oppure rimossa per toglierla.'
+export const DESCRIZIONE_SCALETTA = 'Aggiunge, aggiorna o toglie una voce della scaletta di regia: il piano che la persona vede come tasklist nel pane. stato: scaletta, in_corso, fatto, bloccato, oppure rimossa per toglierla. A ogni voce nuova dai una descrizione che la persona capisca senza leggere la conversazione.'
 
 export const SCHEMA_SCALETTA = {
   type: 'object',
@@ -16,13 +16,15 @@ export const SCHEMA_SCALETTA = {
     id: { type: 'string', description: 'Nome breve e stabile della voce.' },
     titolo: { type: 'string', description: 'Che cosa c\'e da fare; obbligatorio per una voce nuova.' },
     stato: { type: 'string', enum: ['scaletta', 'in_corso', 'fatto', 'bloccato', 'rimossa'] },
-    note: { type: 'string' },
+    descrizione: { type: 'string', description: 'La macro-attivita in 2-4 frasi: che cosa si fa, perche, che cosa ne esce. La persona la legge nel pane per capire a che punto sei.' },
+    fase: { type: 'string', description: 'Fase o area del piano, per raggruppare le voci (es. "1 · analisi").' },
+    note: { type: 'string', description: 'Esito, o il motivo se bloccato.' },
   },
   required: ['id', 'stato'],
   additionalProperties: false,
 } as const
 
-type Argomenti = { id: string; titolo?: string; stato: StatoRegistro | 'rimossa'; note?: string }
+type Argomenti = { id: string; titolo?: string; stato: StatoRegistro | 'rimossa'; note?: string; descrizione?: string; fase?: string }
 
 /** I lavori dopo una scrittura, o il motivo per cui non si puo fare. */
 export function conVoce(lavori: readonly VoceRegistro[], a: Argomenti, sessione: string, oraIso: string): VoceRegistro[] | string {
@@ -32,8 +34,12 @@ export function conVoce(lavori: readonly VoceRegistro[], a: Argomenti, sessione:
   const prima = lavori.find(v => v.id === a.id)
   const titolo = a.titolo?.trim() || prima?.titolo
   if (titolo === undefined) return `la voce "${a.id}" e nuova: serve un titolo`
+  const opzionali = Object.fromEntries((['note', 'descrizione', 'fase'] as const).flatMap(k => (a[k] === undefined ? [] : [[k, a[k]]])))
+  const voce: VoceRegistro = { ...prima, id: a.id, titolo, stato: a.stato, sessione, aggiornato: oraIso, ...opzionali }
+  // La voce resta al suo posto: l'ordine del file e l'ordine del piano.
+  const posto = lavori.findIndex(v => v.id === a.id)
 
-  return [...altre, { ...prima, id: a.id, titolo, stato: a.stato, sessione, aggiornato: oraIso, ...(a.note === undefined ? {} : { note: a.note }) }]
+  return posto < 0 ? [...lavori, voce] : lavori.map((v, i) => (i === posto ? voce : v))
 }
 
 let coda: Promise<unknown> = Promise.resolve()

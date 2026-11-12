@@ -44,6 +44,21 @@ export type RegiaRiga = {
   provenienzaModello?: 'regia' | 'esplicito' | 'ereditato'
   /** Subagente Claude: token dei suoi turni (ingresso, uscita e cache). */
   token?: number
+  /** Voce del piano: la macro-attivita spiegata alla persona. */
+  descrizione?: string
+  /** Voce del piano: fase o area. */
+  fase?: string
+}
+
+/** Una domanda della principale che aspetta la persona (`domanda_scrivi`). */
+export type RegiaDomanda = {
+  id: string
+  titolo: string
+  /** Tutto cio che serve per decidere senza rileggere la conversazione. */
+  contesto: string
+  opzioni: string[]
+  raccomandazione?: string
+  creataMs: number
 }
 
 /**
@@ -84,7 +99,7 @@ export type RegiaScrittura = {
   a: string
   /** Come mostrarlo (nome del lavoro o del subagente). */
   etichetta: string
-  modo: 'posta' | 'riprendi'
+  modo: 'posta' | 'riprendi' | 'risposta'
 }
 
 export type RegiaSnapshot = {
@@ -98,6 +113,10 @@ export type RegiaSnapshot = {
   tempiAgenti: Record<string, RegiaTempoAgente>
   /** Gli ultimi messaggi della posta, per vista. */
   posta: Record<RegiaVista, RegiaMessaggio[]>
+  /** Il piano di questa sessione (le voci di `scaletta_scrivi`), nell'ordine in cui e stato scritto. */
+  piano: RegiaRiga[]
+  /** Le domande aperte di questa sessione, le piu vecchie prima. */
+  domande: RegiaDomanda[]
 }
 
 /**
@@ -116,6 +135,8 @@ export type RegiaMemoriaSessione = {
 
 /** La vista di dettaglio del pane: le ultime righe del log di un lavoro Codex. */
 export type RegiaDettaglio = {
+  /** Che cosa si guarda: il log di un Codex (predefinito), una voce del piano, una domanda. */
+  tipo?: 'log' | 'voce' | 'domanda'
   /** Vuoto: nessun dettaglio aperto, il pane mostra il cruscotto. */
   nome: string
   /** Accorciato per lo schermo. */
@@ -125,6 +146,8 @@ export type RegiaDettaglio = {
   righe: string[]
   errore?: string
   lettoMs: number
+  /** Per `tipo: 'domanda'`: la domanda, con le sue opzioni. */
+  domanda?: RegiaDomanda
 }
 
 declare module 'claude-code' {

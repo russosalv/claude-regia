@@ -1,4 +1,5 @@
-// La sorveglianza: tiene in moto il piano quando nessuno guarda. Due cose:
+// La sorveglianza: tiene in moto il piano quando nessuno guarda (la sveglia
+// solo in modalita long, gli stalli anche in medio, nulla in quick). Due cose:
 // - un agente che non da segni di vita da `stalloMinuti` e fermo: un Codex si
 //   uccide (lo sciame lo rilancia un gradino sopra), un subagente Claude, che una
 //   mod non puo fermare, si segnala alla principale perche usi TaskStop;
@@ -12,6 +13,7 @@ import type { RegiaRiga, RegiaSnapshot } from '../types/index'
 import { intestazioneLog } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
 import { messaggioErrore } from './parsers'
+import { leggiProfilo, notifica } from './profilo'
 
 const GIRO_MS = 60_000
 export const ATTESA_MS = 3 * 60_000
@@ -74,7 +76,7 @@ export function decidiSveglia(o: {
   return { isDovuta: true, sveglie: { ...base, tentativi: base.tentativi + 1, ultimaMs: o.oraMs } }
 }
 
-export function testoSveglia(o: { aperte: readonly RegiaRiga[]; agentiInCorso: number; minuti: number; motivo?: string }): string {
+export function testoSveglia(o: { aperte: readonly RegiaRiga[]; agentiInCorso: number; minuti: number; motivo?: string; domande?: number }): string {
   const voci = o.aperte.slice(0, MASSIMO_VOCI_NEL_TESTO).map(r => `- ${r.nome} (${r.stato})`)
   const altre = o.aperte.length - voci.length
 
@@ -83,6 +85,7 @@ export function testoSveglia(o: { aperte: readonly RegiaRiga[]; agentiInCorso: n
     ...voci,
     ...(altre > 0 ? [`- e altre ${altre}`] : []),
     o.agentiInCorso === 0 ? 'Nessun agente sta lavorando.' : `Agenti ancora in corso: ${o.agentiInCorso}; qualcosa e finito da quando la sessione si e fermata.`,
+    ...((o.domande ?? 0) > 0 ? [`Ci sono ${o.domande} domande aperte per la persona (le vede nel pane): non ripeterle, vai avanti con cio che non dipende da esse.`] : []),
     ...(o.motivo === 'error' ? ['Il tuo ultimo turno si e chiuso per un errore dell\'API: riprendi da dove eri.'] : []),
     'Vai avanti da sola col piano: controlla gli esiti, lancia le prossime voci (insieme quelle indipendenti) e aggiorna la scaletta con scaletta_scrivi.',
     'Non chiedere alla persona il permesso di proseguire. Una voce che non puoi fare segnala `bloccato` con il motivo e passa alla successiva; fermati solo se manca una decisione che spetta a lei, e scrivilo. Se il piano e finito, segna le voci `fatto`.',
@@ -104,6 +107,8 @@ let timer: Timer | undefined
 let isInGiro = false
 /** `fineMs` della principale al giro prima. */
 let fineVista = 0
+/** Voci aperte del piano al giro prima, per accorgersi che e finito. */
+let aperteViste = 0
 
 export function notaInizioPrincipale(): void {
   principale.isOccupata = true
@@ -199,17 +204,23 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     if (home === undefined) return
     const config = (await leggiConfig($, home)).dati
     if (!config.sveglia || (await $.session.surfaces()).length === 0) return
+    // quick: un solo agente, nessuno da sorvegliare. medio: solo gli stalli. long: anche la sveglia.
+    const { profilo } = await leggiProfilo($)
+    if (profilo === 'quick') return
     const [s, oraMs] = await Promise.all([leggiSnapshot(), $.clock.now()])
     if (s.aggiornatoMs === 0) return
     if (principale.fineMs === 0) principale.fineMs = oraMs
     const inCorso = s.viste.sessione.inCorso.filter(isAgente)
     daDire = [...daDire, ...(await controllaStalli($, home, inCorso, oraMs, config.stalloMinuti * 60_000))]
-    const aperte = vociAperte(s)
+    const aperte = profilo === 'long' ? vociAperte(s) : []
+    if (aperteViste > 0 && aperte.length === 0 && s.piano.length > 0) void notifica($, `Piano finito: ${s.piano.length} voci chiuse.`, 'piano')
+    aperteViste = aperte.length
     const isTurnoNuovo = principale.fineMs !== fineVista
     fineVista = principale.fineMs
     const decisa = decidiSveglia({ oraMs, principale, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo })
     if (decisa.sveglie.isEsaurita && !sveglie.isEsaurita) {
       $.ui.toast(`regia: ${MASSIMO_SVEGLIE} sveglie senza progressi, il piano e fermo: serve te`, { timeoutMs: 30_000 })
+      void notifica($, `Il piano e fermo: ${MASSIMO_SVEGLIE} sveglie senza progressi, serve te.`, 'piano')
     }
     if (!decisa.isDovuta) sveglie = decisa.sveglie
     if (principale.isOccupata || principale.motivo === 'aborted' || (!decisa.isDovuta && daDire.length === 0)) return
@@ -219,7 +230,7 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     const minuti = Math.round((oraMs - principale.fineMs) / 60_000)
     const parti = [
       ...(daDire.length > 0 ? ['[regia · sorveglianza] Agenti fermi:', ...daDire] : []),
-      ...(decisa.isDovuta ? [testoSveglia({ aperte, agentiInCorso: inCorso.length, minuti, motivo: principale.motivo })] : []),
+      ...(decisa.isDovuta ? [testoSveglia({ aperte, agentiInCorso: inCorso.length, minuti, motivo: principale.motivo, domande: s.domande.length })] : []),
     ]
     daDire = []
     await sveglia($, parti.join('\n'))

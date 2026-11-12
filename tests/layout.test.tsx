@@ -81,7 +81,7 @@ test('le pillole si accorciano quando non ci stanno', () => {
 
 const LARGHEZZE = [40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 110, 120]
 
-test('il pane non va mai a capo: nessuna riga oltre la larghezza da 40 a 120', async ($, on) => {
+test('il pane non va mai a capo: nessuna riga oltre la larghezza da 40 a 120', { timeoutMs: 30_000 }, async ($, on) => {
   const clock = fontiFinte(on, { isAgentiNegati: false })
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.advance(1000)

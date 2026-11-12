@@ -4,6 +4,7 @@
 import type { AgentInfo } from 'claude-code'
 
 import type {
+  RegiaDomanda,
   RegiaMessaggio,
   RegiaRiga,
   RegiaSnapshot,
@@ -65,6 +66,8 @@ export type InputSnapshot = {
   pidMiei?: ReadonlySet<number>
   /** Nomi dei lavori Codex attribuiti a questa sessione (anche finiti). */
   nomiSessione: ReadonlySet<string>
+  /** Le domande aperte di questa sessione. */
+  domande?: readonly RegiaDomanda[]
 }
 
 export const MASSIMO_POSTA = 5
@@ -78,6 +81,8 @@ export const SNAPSHOT_VUOTO: RegiaSnapshot = {
   isRegistroPresente: false,
   tempiAgenti: {},
   posta: { sessione: [], tutti: [] },
+  piano: [],
+  domande: [],
 }
 
 function testoEsito(voce: VoceLog): string | undefined {
@@ -212,6 +217,8 @@ function rigaRegistro(voce: VoceRegistro, home: string): RegiaRiga {
     modello: voce.modello,
     cartella: luogo === undefined ? undefined : accorciaPercorso(luogo, home),
     note: voce.note,
+    ...(voce.descrizione === undefined ? {} : { descrizione: voce.descrizione }),
+    ...(voce.fase === undefined ? {} : { fase: voce.fase }),
   }
 }
 
@@ -320,6 +327,9 @@ export function costruisciSnapshot(input: InputSnapshot): RegiaSnapshot {
     },
     avvisi: [...input.avvisi],
     isRegistroPresente: input.isRegistroPresente,
+    // Il piano: tutte le voci della sessione, nell'ordine del file (scaletta_scrivi le tiene al loro posto).
+    piano: (soloSessione(input).registro ?? []).map(v => rigaRegistro(v, input.home)),
+    domande: [...(input.domande ?? [])],
     tempiAgenti,
     posta: {
       sessione: ultimiMessaggi(input.posta ?? [], MASSIMO_POSTA, input.sessioneId ?? '').map(perPane),

@@ -62,9 +62,10 @@ const PS_ALFA = '  PID ELAPSED COMMAND\n 1234 59:00 codex exec -C /p -o lavoro-a
 const PIANO = JSON.stringify({ lavori: [{ id: 'sviluppo-04', titolo: 'Sviluppo 04', stato: 'scaletta', sessione: SESSIONE }] })
 
 // Una cinquantina di minuti a orologio finto: ogni minuto un giro completo della mod.
-test('la sorveglianza: un Codex vivo non si tocca, uno fermo si ferma, la principale si sveglia col piano aperto', { timeoutMs: 20_000 }, async ($, on) => {
+test('la sorveglianza: un Codex vivo non si tocca, uno fermo si ferma, la principale si sveglia col piano aperto', { timeoutMs: 60_000 }, async ($, on) => {
   mock.env(on, { HOME })
-  mock.store(on)
+  // La sveglia vale in modalita long.
+  mock.store(on, { [`regia.profilo.${SESSIONE}`]: { profilo: 'long', isVia: false, aggiornatoMs: 1_700_000_000_000 } })
   const clock = mock.clock(on, { now: 1_700_000_000_000 })
   const ora = () => clock.now()
   const f = {

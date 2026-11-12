@@ -1,10 +1,11 @@
-import type { RegiaDettaglio, RegiaRiga, RegiaScrittura, RegiaSnapshot, RegiaVista, RegiaVistaDati } from '../types/index'
+import type { RegiaDettaglio, RegiaDomanda, RegiaRiga, RegiaScrittura, RegiaSnapshot, RegiaVista, RegiaVistaDati } from '../types/index'
 import { campoScrittura, sezionePosta } from './vista-posta'
 import type { TastiScrittura, TavolaConCampo } from './vista-posta'
 import { MASSIMO_FATTI } from './model'
-import { colonnePane, conTitoloUltima, rigaTabella } from './layout'
+import { colonnePane, conTitoloUltima, rigaTabella, segnoStato } from './layout'
 import type { Azioni, Momento } from './layout'
 import { vistaDettaglio } from './dettaglio'
+import type { TastiDomanda } from './dettaglio'
 import {
   ACCENTO,
   CELLE_RIQUADRO,
@@ -41,6 +42,17 @@ export type OpzioniVista = {
   /** Il campo di testo aperto da `✉ scrivi` o `↻ riprendi`; `a` vuoto se chiuso. */
   scrittura?: RegiaScrittura
   tastiScrittura?: TastiScrittura
+  /** Piano e domande: aprire una voce o una domanda, aprire e chiudere i fatti. */
+  piano?: TastiPiano
+  /** I tasti della domanda aperta nel dettaglio. */
+  tastiDomanda?: TastiDomanda
+}
+
+export type TastiPiano = {
+  apriVoce: (riga: RegiaRiga) => void
+  apriDomanda: (domanda: RegiaDomanda) => void
+  isFattiAperti: boolean
+  onFatti: () => void
 }
 
 function dueCifre(n: number): string {
@@ -159,6 +171,68 @@ function piede(ui: Tavola, dati: RegiaSnapshot, spazio: number) {
   )
 }
 
+/** Una riga con il testo tagliato e un tasto `▸` in fondo. */
+function rigaConTasto(ui: Tavola, chiave: string, testa: Pezzo, testo: string, spazio: number, onPress: () => void, isAttenuato = false) {
+  const { Box, Text, Button } = ui
+  const largo = Math.max(1, spazio - cellWidth('[ ▸ ]') - 1 - cellWidth(testa.testo) - 1)
+
+  return (
+    <Box key={chiave} flexDirection="row" width={spazio}>
+      <Box width={spazio - cellWidth('[ ▸ ]') - 1} flexShrink={0}>
+        <Text wrap="truncate-end">
+          <Text color={testa.colore} dimColor={testa.isAttenuato}>{`${testa.testo} `}</Text>
+          <Text dimColor={isAttenuato}>{tronca(testo, largo)}</Text>
+        </Text>
+      </Box>
+      <Box flexShrink={0} marginLeft={1}>
+        <Button key={`apri-${chiave}`} onPress={onPress}>▸</Button>
+      </Box>
+    </Box>
+  )
+}
+
+/** Le domande che aspettano la persona: in cima, perche sono loro a fermare il lavoro. */
+function sezioneDomande(ui: Tavola, domande: readonly RegiaDomanda[], spazio: number, tasti: TastiPiano) {
+  const { Box } = ui
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {regola(ui, 'PER TE', String(domande.length), 'domande da decidere', spazio)}
+      {domande.map(d => rigaConTasto(ui, `domanda:${d.id}`, { testo: '?', colore: 'warning' }, d.titolo, spazio, () => tasti.apriDomanda(d)))}
+    </Box>
+  )
+}
+
+/** Il piano come tasklist: le voci aperte per fase, le fatte in un gruppo che si apre. */
+function sezionePiano(ui: Tavola, piano: readonly RegiaRiga[], spazio: number, fotogramma: number, tasti: TastiPiano) {
+  const { Box, Text, Button } = ui
+  const aperte = piano.filter(r => r.stato !== 'fatto')
+  const fatte = piano.filter(r => r.stato === 'fatto')
+  const conFasi = (righe: readonly RegiaRiga[]) => righe.flatMap((r, i) => {
+    const fase = r.fase ?? ''
+    const isNuovaFase = fase !== '' && fase !== (righe[i - 1]?.fase ?? '')
+    const riga = rigaConTasto(ui, r.chiave, segnoStato(r.stato, fotogramma, r.fonte), r.nome, spazio, () => tasti.apriVoce(r), r.stato === 'fatto')
+
+    return isNuovaFase
+      ? [<Text key={`fase:${r.chiave}`} dimColor bold wrap="truncate-end">{tronca(fase, spazio)}</Text>, riga]
+      : [riga]
+  })
+  const etichetta = `${tasti.isFattiAperti ? '▾' : '▸'} ${fatte.length} fatte`
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {regola(ui, 'PIANO', `${fatte.length}/${piano.length}`, aperte.length === 0 ? 'tutto fatto' : `${aperte.length} da chiudere`, spazio)}
+      {conFasi(aperte)}
+      {fatte.length > 0 && (
+        <Box width={spazio}>
+          <Button key="fatti-piano" onPress={tasti.onFatti}>{tronca(etichetta, Math.max(1, spazio - 4))}</Button>
+        </Box>
+      )}
+      {tasti.isFattiAperti && conFasi(fatte)}
+    </Box>
+  )
+}
+
 /** Mentre a sinistra c'e la conversazione di un subagente: il tasto per tornare. */
 function ritorno(ui: Tavola, spazio: number, onPress: (() => void) | undefined) {
   const { Box, Text, Button } = ui
@@ -184,9 +258,16 @@ export function vistaRegia(dati: RegiaSnapshot, ui: TavolaConCampo, opzioni: Opz
     return vistaDettaglio(ui, opzioni.dettaglio, spazio, {
       onChiudi: opzioni.onChiudiDettaglio ?? (() => undefined),
       onRileggi: opzioni.onRileggiDettaglio ?? (() => undefined),
+      ...(opzioni.tastiDomanda === undefined ? {} : { domanda: opzioni.tastiDomanda }),
     })
   }
-  const gruppi = dati.viste[opzioni.vista]
+  const isSessione = opzioni.vista === 'sessione'
+  const piano = isSessione ? dati.piano : []
+  const domande = isSessione ? dati.domande : []
+  // Con il piano nel suo riquadro le sue voci non si ripetono nelle tabelle degli agenti.
+  const senzaPiano = (righe: readonly RegiaRiga[]) => (piano.length === 0 ? [...righe] : righe.filter(r => !r.chiave.startsWith('registro:')))
+  const vistaDati = dati.viste[opzioni.vista]
+  const gruppi: RegiaVistaDati = { ...vistaDati, inCorso: senzaPiano(vistaDati.inCorso), scaletta: senzaPiano(vistaDati.scaletta), fatti: senzaPiano(vistaDati.fatti) }
   const momento: Momento = {
     fotogramma: Math.floor(opzioni.oraMs / 1000),
     trascorsiSec: Math.max(0, (opzioni.oraMs - dati.aggiornatoMs) / 1000),
@@ -207,10 +288,12 @@ export function vistaRegia(dati: RegiaSnapshot, ui: TavolaConCampo, opzioni: Opz
   return (
     <Box flexDirection="column" width={spazio}>
       {opzioni.agenteInVista !== undefined && ritorno(ui, spazio, opzioni.onTornaPrincipale)}
-      {intestazione(ui, gruppi, opzioni, spazio)}
+      {intestazione(ui, vistaDati, opzioni, spazio)}
       {scrittura !== undefined && scrittura.a !== '' && tastiScrittura !== undefined && campoScrittura(ui, scrittura, spazio, tastiScrittura)}
+      {domande.length > 0 && opzioni.piano !== undefined && sezioneDomande(ui, domande, spazio, opzioni.piano)}
+      {piano.length > 0 && opzioni.piano !== undefined && sezionePiano(ui, piano, spazio, momento.fotogramma, opzioni.piano)}
       {tutte.length === 0
-        ? statoVuoto(ui, opzioni.vista, spazio)
+        ? piano.length === 0 && statoVuoto(ui, opzioni.vista, spazio)
         : sezioni.map(s => sezione(ui, s, colonne, momento, spazio, opzioni.azioni))}
       {(tutte.length > 0 || posta.length > 0) && sezionePosta(ui, posta, spazio)}
       {piede(ui, dati, spazio)}

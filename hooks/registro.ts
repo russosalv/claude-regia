@@ -13,6 +13,10 @@ export type VoceRegistro = {
   worktree?: string
   ramo?: string
   note?: string
+  /** La macro-attivita spiegata alla persona: che cosa si fa e perche. */
+  descrizione?: string
+  /** Gruppo del piano (fase, area), per la tasklist del pane. */
+  fase?: string
   aggiornato?: string
   /** La sessione che l'ha scritta con `scaletta_scrivi`; senza, vale per tutte. */
   sessione?: string
@@ -39,6 +43,8 @@ export type ConfigRegia = {
   sveglia: boolean
   /** Minuti senza segni di vita dopo cui un agente in corso e considerato fermo. */
   stalloMinuti: number
+  /** Il modello della principale in modalita quick (`/regia quick`). */
+  quickModello: string
 }
 
 export const AGGIORNAMENTO_PREDEFINITO_SEC = 15
@@ -62,6 +68,8 @@ const CAMPI_TESTO_REGISTRO = [
   'worktree',
   'ramo',
   'note',
+  'descrizione',
+  'fase',
   'aggiornato',
   'sessione',
 ] as const
@@ -88,6 +96,8 @@ function leggiVoceRegistro(grezza: unknown): VoceRegistro | undefined {
     worktree: o.worktree as string | undefined,
     ramo: o.ramo as string | undefined,
     note: o.note as string | undefined,
+    descrizione: o.descrizione as string | undefined,
+    fase: o.fase as string | undefined,
     aggiornato: o.aggiornato as string | undefined,
     sessione: o.sessione as string | undefined,
   }
@@ -152,6 +162,7 @@ function campoBooleano(grezzo: unknown, nome: string, predefinito: boolean): Cam
 }
 
 export const STALLO_PREDEFINITO_MIN = 30
+export const QUICK_MODELLO_PREDEFINITO = 'sonnet'
 
 function campoStallo(grezzo: unknown): Campo<number> {
   if (grezzo === undefined) return { valore: STALLO_PREDEFINITO_MIN, avvisi: [] }
@@ -164,7 +175,7 @@ function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
   const modo = MODI_ORCHESTRA.find(m => m === grezzo)
   if (modo !== undefined) return { valore: modo, avvisi: [] }
 
-  return { valore: 'stretta', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${MODI_ORCHESTRA.join(', ')}`] }
+  return { valore: 'guida', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${MODI_ORCHESTRA.join(', ')}`] }
 }
 
 function campoParallelo(grezzo: unknown): Campo<number> {
@@ -198,12 +209,13 @@ export function parseConfig(
     aggiornamentoSecondi: AGGIORNAMENTO_PREDEFINITO_SEC,
     instradamento: true,
     modelli: {},
-    orchestra: 'stretta',
+    orchestra: 'guida',
     risparmio: true,
     ponytail: true,
     sciameParallelo: SCIAME_PARALLELO_PREDEFINITO,
     sveglia: true,
     stalloMinuti: STALLO_PREDEFINITO_MIN,
+    quickModello: QUICK_MODELLO_PREDEFINITO,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
     return { config: predefinita, avvisi: ['config.json: atteso un oggetto'] }
@@ -220,6 +232,7 @@ export function parseConfig(
   const parallelo = campoParallelo(o.sciameParallelo)
   const sveglia = campoBooleano(o.sveglia, 'sveglia', true)
   const stallo = campoStallo(o.stalloMinuti)
+  const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
     aggiornamentoSecondi: secondi.valore ?? predefinita.aggiornamentoSecondi,
@@ -231,9 +244,10 @@ export function parseConfig(
     sciameParallelo: parallelo.valore,
     sveglia: sveglia.valore,
     stalloMinuti: stallo.valore,
+    quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, quick].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

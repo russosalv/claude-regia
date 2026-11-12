@@ -8,6 +8,7 @@ import { SCHEMA_CODEX_AVVIA } from './codex'
 import { DESCRIZIONE_RIPRENDI, NOME_TOOL_RIPRENDI, SCHEMA_RIPRENDI } from './codex-riprendi'
 import { leggiHome } from './fonti'
 import { messaggioErrore } from './parsers'
+import { DESCRIZIONE_DOMANDA, SCHEMA_DOMANDA } from './domande'
 import { DESCRIZIONE_SCALETTA, SCHEMA_SCALETTA } from './scaletta'
 import { STRUMENTI_SCIAME } from './sciame-motore'
 import { DESCRIZIONE_INVIA, DESCRIZIONE_LEGGI, SCHEMA_INVIA, SCHEMA_LEGGI, recapita } from './posta-azioni'
@@ -18,6 +19,7 @@ const STRUMENTI = [
   { name: 'posta_invia', description: DESCRIZIONE_INVIA, inputSchema: SCHEMA_INVIA },
   { name: 'posta_leggi', description: DESCRIZIONE_LEGGI, inputSchema: SCHEMA_LEGGI },
   { name: 'scaletta_scrivi', description: DESCRIZIONE_SCALETTA, inputSchema: SCHEMA_SCALETTA },
+  { name: 'domanda_scrivi', description: DESCRIZIONE_DOMANDA, inputSchema: SCHEMA_DOMANDA },
   ...STRUMENTI_SCIAME,
 ] as const
 

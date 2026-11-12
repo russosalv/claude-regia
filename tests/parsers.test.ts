@@ -152,12 +152,13 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     aggiornamentoSecondi: 30,
     instradamento: true,
     modelli: {},
-    orchestra: 'stretta',
+    orchestra: 'guida',
     risparmio: true,
     ponytail: true,
     sciameParallelo: 4,
     sveglia: true,
     stalloMinuti: 30,
+    quickModello: 'sonnet',
   })
   expect(ok.avvisi).toEqual([])
 
