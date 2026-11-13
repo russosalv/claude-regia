@@ -56,6 +56,8 @@ export const AGGIORNAMENTO_MINIMO_SEC = 2
 export const AGGIORNAMENTO_MASSIMO_SEC = 3600
 /** Il log dei lavori lanciati da `codex_avvia`, sempre tra le fonti. */
 export const LOG_CODEX_REGIA = '.claude/regia/codex/esegui.log'
+/** Il log dei lavori lanciati da `qwen_avvia`, sempre tra le fonti. */
+export const LOG_QWEN_REGIA = '.claude/regia/qwen/esegui.log'
 export const SCIAME_PARALLELO_PREDEFINITO = 4
 export const MODI_ORCHESTRA = ['stretta', 'guida', 'off'] as const
 export type ModoOrchestra = (typeof MODI_ORCHESTRA)[number]
@@ -214,11 +216,11 @@ function campoTesto(grezzo: unknown, nome: string, predefinito?: string): Campo<
   return { valore: predefinito, avvisi: [`config.json: "${nome}" non e un nome valido`] }
 }
 
-/** Il log di `codex_avvia` in coda ai log scelti, una volta sola. */
+/** I log di `codex_avvia` e `qwen_avvia` in coda ai log scelti, una volta sola. */
 function conLogRegia(logs: readonly string[], home: string): string[] {
-  const regia = `${home}/${LOG_CODEX_REGIA}`
+  const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA].map(l => `${home}/${l}`)
 
-  return logs.includes(regia) ? [...logs] : [...logs, regia]
+  return [...logs, ...regia.filter(r => !logs.includes(r))]
 }
 
 /** Config opzionale: valori non validi tornano al predefinito, con un avviso. */

@@ -192,6 +192,6 @@ export function conLanci(righe: readonly RegiaRiga[], lanci: Readonly<Record<str
   return righe.map(r => {
     const lancio = r.fonte === 'codex' && r.modello === undefined ? lanci[r.nome] : undefined
 
-    return lancio === undefined ? r : { ...r, modello: lancio.modello, effort: lancio.sforzo }
+    return lancio === undefined ? r : { ...r, modello: lancio.modello, effort: lancio.sforzo === '' ? undefined : lancio.sforzo }
   })
 }

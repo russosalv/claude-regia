@@ -66,8 +66,8 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   on('session.id', () => ({ value: SESSIONE }))
   on('session.cwd', () => ({ value: PROGETTO }))
   on('session.repo', () => ({ value: opzioni.senzaRepo === true ? null : { root: PROGETTO, name: 'progetto', remote: null, internal: false } }))
-  on('fs.stat', (_, e) => (e.path === WORKTREE
-    ? { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: WORKTREE } }
+  on('fs.stat', (_, e) => (e.path === WORKTREE || e.path === PROGETTO
+    ? { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }
     : { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }))
   on('fs.exists', (_, e) => ({
     value: esistenti.has(e.path) || stato.scritti.has(e.path) || (e.path.endsWith('config.json') && opzioni.config !== undefined),

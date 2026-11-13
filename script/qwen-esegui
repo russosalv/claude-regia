@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Lancia un lavoro Qwen Code per la mod regia (tool qwen_avvia): nice, un solo tentativo, righe di inizio e fine in
+# esegui.log. Il prompt entra da stdin (<nome>.prompt.md): niente limite di argv e niente prompt in `ps`.
+# Con REGIA_RIPRENDI=<id sessione qwen> riprende quella sessione con il messaggio di <nome>.riprendi.md (qwen_riprendi).
+# Permesso: `auto` scrive file e lancia comandi (provato: accept_edits rifiuta git e python); `default` legge soltanto.
+# Uso: qwen-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo|""> <esegui.log> <permesso> [ramo-base]
+set -u
+n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; P=${7:-auto}; B=${8:-main}
+R=${REGIA_RIPRENDI:-}
+# Tetto di sicurezza (secondi) se la mod non gira: la sorveglianza ferma comunque chi tace da stalloMinuti.
+T=${REGIA_QWEN_TIMEOUT:-14400}
+cd "$D" || exit 1
+modello=(); [ -n "$M" ] && modello=(-m "$M")
+sforzo=(); [ -n "$S" ] && sforzo=(--reasoning-effort "$S")
+export REGIA_NOME="$n"
+echo $$ > "$n.pid"
+echo "$P" > "$n.permesso"
+echo "$W" > "$n.cartella"
+if [ -n "$R" ]; then
+  # Il giro di prima resta in <nome>.storico.log; l'esito vuoto dice se questo giro ha risposto.
+  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
+  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
+  rm -f "$n.esito.md"
+  sessione=(--resume "$R"); entrata="$n.riprendi.md"
+else
+  # L'id lo scegliamo noi: serve subito a qwen_riprendi e alla sorveglianza.
+  id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
+  echo "$id" > "$n.sessione"
+  sessione=(--session-id "$id"); entrata="$n.prompt.md"
+fi
+echo "$(date +%H:%M) inizio $n" >> "$L"
+# -n e -w servono anche a `ps`: la mod riconosce il lavoro dal nome.
+( cd "$W" && nice -n 10 timeout "$T" qwen "${modello[@]}" "${sforzo[@]}" --permission-mode "$P" "${sessione[@]}" -n "$n" -w "$W" -p < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
+rc=$?
+# Una risposta vuota con exit 0 e un guasto (API, rete): meglio che lo sciame lo rilanci.
+[ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
+commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
+echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
+rm -f "$n.pid"

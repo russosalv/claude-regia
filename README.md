@@ -6,7 +6,7 @@ Mod di Claude Code per lavorare da orchestratore: la conversazione principale co
 - **Domande con il loro contesto.** Ogni decisione che spetta a te arriva con a che punto si e, le opzioni e la raccomandazione: nel pane, con i tasti per rispondere o approfondire con un agente, e come notifica se non sei al PC.
 - **Il piano come tasklist.** Le voci con la descrizione della macro-attivita, raggruppate per fase, le fatte in un gruppo che si apre.
 - **Modello e sforzo per compito.** Nessuna tabella decisa in anticipo: a ogni chiamata ad Agent la mod guarda il compito vero. Chi fallisce riprova un gradino sopra.
-- **Sciami.** `sciame_avvia` manda agenti Claude e Codex su una lavagna con dipendenze, parallelismo e posta fra loro.
+- **Sciami.** `sciame_avvia` manda agenti Claude, Codex e Qwen su una lavagna con dipendenze, parallelismo e posta fra loro.
 - **Risparmio.** Regole di sobrieta e rapporti brevi nei prompt dei delegati (o Ponytail, se c'e), tool che non pesano sul prompt.
 - **Cruscotto.** Un pane fisso accanto alla chat: **PER TE** (le domande), **PIANO**, poi **IN CORSO**, **IN SCALETTA**, **FATTI**, con modello, sforzo, durata e token di ognuno.
 
@@ -18,7 +18,7 @@ Dal prompt di una sessione:
 /plugin install regia --marketplace russosalv/claude-regia
 ```
 
-Codex CLI serve solo per i lavori Codex; python3 solo per la CLI `posta`. Nessun altro plugin e richiesto (Ponytail lo installa la mod).
+Codex CLI serve solo per i lavori Codex e Qwen Code (`qwen`, testato con 1.0.0-preview.1) solo per quelli Qwen; python3 solo per la CLI `posta`. Nessun altro plugin e richiesto (Ponytail lo installa la mod).
 
 ## Comandi
 
@@ -103,6 +103,7 @@ sciame_avvia({
     { nome: "mappa", prompt: "Trova tutti gli usi della vecchia API..." },
     { nome: "nucleo", prompt: "...", scrive: true, dopo: ["mappa"] },
     { nome: "client", prompt: "...", scrive: true, esecutore: "codex", dopo: ["mappa"] },
+    { nome: "doc", prompt: "...", esecutore: "qwen", dopo: ["mappa"] },
     { nome: "revisione", prompt: "...", dopo: ["nucleo", "client"] }
   ]
 })
@@ -225,6 +226,22 @@ Una casella sola, `~/.claude/regia/posta/posta.jsonl`: una riga JSON per messagg
 ## Riprendere un Codex finito: `codex_riprendi`
 
 `codex exec resume <id sessione> [PROMPT]` esiste (codex-cli 0.163), quindi c'è il tool `codex_riprendi(nome, messaggio)` e, nei Fatti, il tasto `↻ riprendi` su ogni lavoro Codex con un log. L'id della sessione Codex si legge da `<nome>.sessione` (che lo script scrive a fine giro) o dall'intestazione del log (`session id: …`), dove ci sono anche cartella, modello e sforzo. Il lancio è quello di `codex_avvia` (staccato, `esegui.log`, tentativi su «at capacity») con `REGIA_RIPRENDI` nell'ambiente: lo script entra nella cartella del lavoro (`resume` non ha `-C`) e manda il messaggio da `<nome>.riprendi.md`. Il log e l'esito del giro prima vanno in coda a `<nome>.storico.log`. Funziona anche per i lavori dei log in `codexLogs`: il log si cerca accanto a quelli configurati. Un lavoro ancora in corso si rifiuta: a lui si scrive con `posta_invia`.
+
+## Qwen Code: `qwen_avvia` e `qwen_riprendi`
+
+Stessa idea e stesso codice di Codex, con `qwen` al posto di `codex exec`. `qwen_avvia(nome, cartella, prompt, regole?, sforzo?, modello?, scrive?)` scrive prompt, log ed esito in `~/.claude/regia/qwen/<nome>/` e le righe `inizio`/`fine` in `~/.claude/regia/qwen/esegui.log` (sempre tra le fonti del pane, come quello di Codex). Lo script `script/qwen-esegui` esegue, dalla cartella del lavoro e con `nice`:
+
+```
+timeout 14400 qwen [-m <modello>] [--reasoning-effort <sforzo>] --permission-mode <auto|default> --session-id <uuid> -n <nome> -w <cartella> -p < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
+```
+
+- **Prompt da stdin**: niente limite di argomenti e niente prompt in `ps`. Lo stdout di `qwen -p` e la risposta finale: e l'esito (`<nome>.esito.md`). Una risposta vuota con exit 0 vale come guasto (exit 1).
+- **Permesso**: `scrive` (predefinito `true`) usa `--permission-mode auto`, `scrive: false` usa `default`. Provato su qwen 1.0.0-preview.1 con un compito che crea un file, lancia una shell, fa `git commit` e `python3`: `accept_edits` scrive i file ma rifiuta i comandi shell che non sono di sola lettura; `dont_ask` rifiuta tutto; `auto` e `bypass_permissions` riescono, e `auto` e la meno permissiva. `default` legge e lancia `ls`, ma rifiuta le scritture. Chi ha bisogno di piu (installare pacchetti, comandi che `auto` rifiuta) non ha un'uscita: la mod non usa `bypass_permissions`.
+- **Sforzo**: se non lo dai decide Qwen (nessun giudizio di haiku). **Modello**: quello che dai, altrimenti il predefinito di Qwen (non c'e un `qwenModello` in config).
+- **Un solo tentativo**: niente ripetizioni su «at capacity»; nello sciame riprova una volta la mod, come per ogni compito. Tetto di sicurezza di 4 ore (`REGIA_QWEN_TIMEOUT`, secondi); la sorveglianza ferma chi tace da `stalloMinuti` guardando il log e il file di sessione `~/.qwen/projects/<cartella>/<id>.jsonl`.
+- **Il pane** mostra i lavori Qwen come quelli Codex (riga `qwen`, `▸ log`, `✉ scrivi`, `↻ riprendi`, conto `● 1 qwen`): i vivi sono i processi `qwen -p` (nome da `-n`, cartella da `-w`, modello da `-m`), i finiti vengono da `esegui.log`. Una sessione `qwen` interattiva non conta.
+- **`qwen_riprendi(nome, messaggio)`** (e il tasto `↻ riprendi`) usa `qwen --resume <id>`: l'id lo sceglie lo script (`--session-id`) e lo scrive in `<nome>.sessione`, con cartella e permesso in `<nome>.cartella` e `<nome>.permesso`. Provato: la sessione ricorda il giro prima.
+- **Nello sciame**: `esecutore: "qwen"`. `scrive: true` ha il suo worktree e il permesso `auto`; `scrive: false` lavora in sola lettura sul repository (`default`). La CLI `posta` richiede un comando shell: in sola lettura Qwen non la puo usare.
 
 ## Scaletta
 

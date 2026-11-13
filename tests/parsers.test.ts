@@ -148,7 +148,7 @@ test('validaRegistro rifiuta una radice senza lista di lavori', () => {
 test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
   const ok = parseConfig({ codexLogs: ['~/a/log', '/b/log'], aggiornamentoSecondi: 30 }, '/home/u')
   expect(ok.config).toEqual({
-    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log'],
+    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log'],
     aggiornamentoSecondi: 30,
     instradamento: true,
     modelli: {},
@@ -166,7 +166,7 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
 
   const vuota = parseConfig({}, '/home/u')
   expect(vuota.config.aggiornamentoSecondi).toBe(15)
-  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log'])
+  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log'])
   expect(vuota.config.codexModello).toBeUndefined()
 
   const storta = parseConfig({ codexLogs: 'no', aggiornamentoSecondi: 0 }, '/home/u')

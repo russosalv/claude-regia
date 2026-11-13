@@ -17,7 +17,7 @@ import type { RegiaRiga, RegiaSnapshot } from '../types/index'
 import { intestazioneLog } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
 import { CONTROLLO_PREDEFINITO_MIN } from './registro'
-import { messaggioErrore } from './parsers'
+import { cartellaDi, messaggioErrore } from './parsers'
 import { PRINCIPALE } from './posta'
 import { leggiProfilo, notifica } from './profilo'
 
@@ -190,7 +190,25 @@ async function ultimoSegnoCodex($: EngineInterface, home: string, log: string): 
   return Math.max(stat.mtimeMs, sessione?.mtimeMs ?? 0)
 }
 
-/** Gli agenti in corso fermi da troppo: i Codex li ferma, i Claude li elenca. */
+/**
+ * L'ultimo segno di vita di un Qwen. Il log (stderr) e l'esito (stdout) restano fermi fino alla fine;
+ * il file di sessione (`~/.qwen/projects/<cartella>/<id>.jsonl`, l'id sta in `<nome>.sessione`) si scrive a ogni passo.
+ */
+async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
+  const stat = await $.fs.stat(log).catch(() => undefined)
+  if (stat === undefined) return undefined
+  const file = `${cartellaDi(log)}/${nome}.sessione`
+  const id = (await $.fs.exists(file)) ? (await $.fs.read(file)).trim() : ''
+  if (!/^[\w-]+$/.test(id)) return stat.mtimeMs
+  const radice = `${home}/.qwen`
+  const r = await $.process.run(['find', `${radice}/projects`, '-name', `${id}.jsonl`], { timeoutMs: 15_000 })
+  const jsonl = r.stdout.split('\n').find(x => x !== '')
+  const sessione = jsonl === undefined ? undefined : await $.fs.stat(jsonl).catch(() => undefined)
+
+  return Math.max(stat.mtimeMs, sessione?.mtimeMs ?? 0)
+}
+
+/** Gli agenti in corso fermi da troppo: i Codex e i Qwen li ferma, i Claude li elenca. */
 async function controllaStalli($: EngineInterface, home: string, inCorso: readonly RegiaRiga[], oraMs: number, stalloMs: number): Promise<string[]> {
   const righe: string[] = []
   for (const r of inCorso) {
@@ -198,15 +216,17 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
       if (segnalati.has(r.chiave)) continue
       const log = await $.fs.stat(r.fileLog).catch(() => undefined)
       if (log === undefined || oraMs - log.mtimeMs < stalloMs) continue
-      const segno = await ultimoSegnoCodex($, home, r.fileLog)
+      const isQwen = r.esecutore === 'qwen'
+      const cli = isQwen ? 'Qwen' : 'Codex'
+      const segno = isQwen ? await ultimoSegnoQwen($, home, r.fileLog, r.nome) : await ultimoSegnoCodex($, home, r.fileLog)
       if (segno === undefined || oraMs - segno < stalloMs) continue
       segnalati.add(r.chiave)
       const minuti = Math.round((oraMs - segno) / 60_000)
       const isUcciso = await uccidiCodex($, r.nome)
-      $.ui.toast(`regia: Codex ${r.nome} fermo da ${minuti} min${isUcciso ? ', fermato' : ''}`, { timeoutMs: 10_000 })
+      $.ui.toast(`regia: ${cli} ${r.nome} fermo da ${minuti} min${isUcciso ? ', fermato' : ''}`, { timeoutMs: 10_000 })
       righe.push(isUcciso
-        ? `- Codex "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione Codex fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (codex_riprendi o un nuovo lavoro).`
-        : `- Codex "${r.nome}": nessun segno di vita da ${minuti} min, e non e stato possibile fermarlo: fallo tu.`)
+        ? `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione ${cli} fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (${isQwen ? 'qwen_riprendi' : 'codex_riprendi'} o un nuovo lavoro).`
+        : `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min, e non e stato possibile fermarlo: fallo tu.`)
     } else if (r.fonte === 'claude' && r.agenteId !== undefined) {
       const visto = ultimoPasso.get(r.agenteId)
       if (visto === undefined) {

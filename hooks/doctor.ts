@@ -24,6 +24,7 @@ export type DatiDoctor = {
   repo?: string
   /** La prima riga di `--version`; `undefined` se il comando non c'e. */
   codex?: string
+  qwen?: string
   /** Modalita e presenza della sessione; senza, i predefiniti. */
   profilo?: StatoProfilo
   python?: string
@@ -65,6 +66,7 @@ export function testoDoctor(d: DatiDoctor): string {
     `Risparmio: ${c.risparmio ? 'ACCESO' : 'SPENTO'} — ${d.isPonytail ? 'Ponytail attivo' : 'Ponytail non attivo'}${c.risparmio ? (d.isPonytail ? ', la mod aggiunge il rapporto breve' : ', la mod aggiunge sobrieta e rapporto breve (/regia ponytail on per installarlo)') : ''}.`,
     `Sciami: ${d.sciamiAttivi} in corso, parallelo ${c.sciameParallelo}. ${d.repo === undefined ? 'Nessun repository: i compiti che scrivono verranno rifiutati.' : `Repository: ${d.repo}.`}`,
     `Codex: ${d.codex === undefined ? 'NON trovato — codex_avvia e i compiti Codex non partiranno' : `${d.codex}, modello ${c.codexModello ?? 'deciso da Codex'}`}.`,
+    `Qwen: ${d.qwen === undefined ? 'NON trovato — qwen_avvia e i compiti Qwen non partiranno' : d.qwen}.`,
     `Posta dai Codex: ${d.python === undefined ? 'python3 NON trovato — la CLI posta non funziona' : d.python}.`,
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
@@ -100,7 +102,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
     const home = await leggiHome($)
     if (home === undefined) return 'regia doctor: HOME non definita, non trovo la config.'
     const percorsoConfig = `${home}/.claude/regia/config.json`
-    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, codex, python, profilo] = await Promise.all([
+    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, codex, qwen, python, profilo] = await Promise.all([
       versioneMod($),
       leggiConfig($, home),
       $.fs.exists(percorsoConfig),
@@ -110,6 +112,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       contaSciamiAttivi($),
       $.session.repo().catch(() => undefined),
       versioneDi($, 'codex'),
+      versioneDi($, 'qwen'),
       versioneDi($, 'python3'),
       leggiProfilo($),
     ])
@@ -127,6 +130,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       sciamiAttivi,
       repo: repo?.root,
       codex,
+      qwen,
       python,
       profilo,
     })

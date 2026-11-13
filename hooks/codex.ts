@@ -6,6 +6,10 @@ import { espandiTilde } from './parsers'
 export const SFORZI = ['low', 'medium', 'high'] as const
 export type Sforzo = (typeof SFORZI)[number]
 
+/** Le CLI che la mod lancia in background: stesso modello di lavoro, cartella di lavoro diversa. */
+export type EsecutoreCli = 'codex' | 'qwen'
+export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen']
+
 /** Argomenti del tool come li manda il modello, gia controllati. */
 export type RichiestaCodex = {
   nome: string
@@ -14,6 +18,8 @@ export type RichiestaCodex = {
   regole?: string
   sforzo?: Sforzo
   modello?: string
+  /** Solo Qwen: il lavoro cambia file (modalita `auto`) o legge soltanto (`default`). */
+  scrive?: boolean
 }
 
 export type SceltaSforzo = { sforzo: Sforzo; motivo: string; daChi: 'chiamata' | 'classificazione' | 'euristica' }
@@ -35,6 +41,24 @@ export const SCHEMA_CODEX_AVVIA = {
   required: ['nome', 'cartella', 'prompt'],
   additionalProperties: false,
 } as const
+
+/** Qwen: stesso schema di Codex, piu `scrive` che sceglie il permesso (`sforzo` e `modello` valgono per `qwen`). */
+export const SCHEMA_QWEN_AVVIA = {
+  ...SCHEMA_CODEX_AVVIA,
+  properties: {
+    ...SCHEMA_CODEX_AVVIA.properties,
+    cartella: { type: 'string', description: 'Cartella in cui Qwen lavora: percorso assoluto (o con ~) di una cartella esistente.' },
+    prompt: { type: 'string', description: 'Il compito per Qwen, completo.' },
+    sforzo: { type: 'string', enum: [...SFORZI], description: 'Sforzo di ragionamento (--reasoning-effort); se manca decide Qwen.' },
+    modello: { type: 'string', description: 'Modello Qwen (-m); se manca, quello predefinito di Qwen.' },
+    scrive: { type: 'boolean', description: 'true (predefinito) se il lavoro cambia file o lancia comandi: permesso "auto". false: solo lettura, permesso "default".' },
+  },
+} as const
+
+/** Il permesso di `qwen`: la modalita meno permissiva che scrive file e lancia comandi (provato: accept_edits rifiuta git e python). */
+export function permessoQwen(scrive: boolean | undefined): 'auto' | 'default' {
+  return scrive === false ? 'default' : 'auto'
+}
 
 function testo(o: Record<string, unknown>, campo: string): string | undefined {
   const v = o[campo]
@@ -79,6 +103,7 @@ export function validaRichiesta(grezzo: unknown, home: string): { richiesta?: Ri
   if (sforzo !== undefined && !SFORZI.includes(sforzo as Sforzo)) return { errore: `sforzo non valido: ${sforzo} (low, medium o high)` }
   if (modello !== undefined && !RE_MODELLO.test(modello)) return { errore: `modello non valido: ${modello}` }
   const regole = testo(o, 'regole')
+  const scrive = typeof o.scrive === 'boolean' ? o.scrive : undefined
 
   return {
     richiesta: {
@@ -88,6 +113,7 @@ export function validaRichiesta(grezzo: unknown, home: string): { richiesta?: Ri
       ...(regole === undefined ? {} : { regole: espandiTilde(regole, home) }),
       ...(sforzo === undefined ? {} : { sforzo: sforzo as Sforzo }),
       ...(modello === undefined ? {} : { modello }),
+      ...(scrive === undefined ? {} : { scrive }),
     },
   }
 }
@@ -149,8 +175,8 @@ export function componiPrompt(prompt: string, regole: string | undefined, coda: 
 }
 
 /** Dove la mod tiene i file di un lavoro. */
-export function percorsiLavoro(home: string, nome: string) {
-  const radice = `${home}/.claude/regia/codex`
+export function percorsiLavoro(home: string, nome: string, esecutore: EsecutoreCli = 'codex') {
+  const radice = `${home}/.claude/regia/${esecutore}`
   const cartella = `${radice}/${nome}`
 
   return {
@@ -162,6 +188,9 @@ export function percorsiLavoro(home: string, nome: string) {
     pid: `${cartella}/${nome}.pid`,
     riprendi: `${cartella}/${nome}.riprendi.md`,
     sessione: `${cartella}/${nome}.sessione`,
+    /** Solo Qwen: cartella e permesso del lavoro, per riprenderlo. */
+    cartellaLavoro: `${cartella}/${nome}.cartella`,
+    permesso: `${cartella}/${nome}.permesso`,
     eseguiLog: `${radice}/esegui.log`,
   }
 }

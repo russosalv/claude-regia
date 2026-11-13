@@ -13,7 +13,7 @@ export type StatoCompito = 'attesa' | 'corsa' | 'fatto' | 'fallito' | 'bloccato'
 export type Compito = {
   nome: string
   prompt: string
-  esecutore: 'claude' | 'codex'
+  esecutore: 'claude' | 'codex' | 'qwen'
   /** Tipo di agente Claude; se manca, `general-purpose`. */
   tipo?: string
   /** Vero se cambia dei file: lavora in un worktree suo. */
@@ -57,7 +57,7 @@ function leggiCompito(g: Grezzo): Compito | string {
   return {
     nome,
     prompt: g.prompt,
-    esecutore: g.esecutore === 'codex' ? 'codex' : 'claude',
+    esecutore: g.esecutore === 'codex' || g.esecutore === 'qwen' ? g.esecutore : 'claude',
     ...(typeof g.tipo === 'string' && g.tipo.trim() !== '' ? { tipo: g.tipo.trim() } : {}),
     scrive: g.scrive === true,
     dopo: (g.dopo ?? []) as string[],

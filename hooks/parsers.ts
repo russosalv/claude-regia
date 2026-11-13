@@ -2,6 +2,8 @@
 // ne dipende, quindi sono testati a parte (parsers.test.ts).
 
 export type ProcessoCodex = {
+  /** Assente vale `codex`. */
+  esecutore?: 'qwen'
   pid: number
   durataSec: number
   nome: string
@@ -50,7 +52,14 @@ export function cartellaDi(percorso: string): string {
 export function cartellaLavoro(percorsoLog: string, nome: string): string {
   const cartella = cartellaDi(percorsoLog)
 
-  return cartella.endsWith('/.claude/regia/codex') ? `${cartella}/${nome}` : cartella
+  return RE_RADICE_LAVORI.test(cartella) ? `${cartella}/${nome}` : cartella
+}
+
+const RE_RADICE_LAVORI = /\/\.claude\/regia\/(codex|qwen)$/
+
+/** Di quale CLI e un log: quelli di `qwen_avvia` stanno in `~/.claude/regia/qwen/`. */
+export function esecutoreDelLog(percorsoLog: string): 'codex' | 'qwen' {
+  return cartellaDi(percorsoLog).endsWith('/.claude/regia/qwen') ? 'qwen' : 'codex'
 }
 
 export function espandiTilde(percorso: string, home: string): string {
@@ -220,6 +229,41 @@ export function nomeLavoro(
   return `codex-${pid}`
 }
 
+const OPZIONI_QWEN = new Set(['-m', '--model', '-n', '--name', '-w', '--cwd', '--reasoning-effort', '--permission-mode'])
+
+/**
+ * Un `qwen` lanciato da `qwen-esegui`: il comando e il primo della riga (o dopo `timeout <sec>`),
+ * cosi un `bash -c` che ne parla non conta. Nome dal `-n`, cartella dal `-w`.
+ */
+function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
+  const base = (t: string | undefined) => (t ?? '').replace(/^.*\//, '')
+  const posizione = base(token[0]) === 'qwen' ? 0 : base(token[0]) === 'timeout' && base(token[2]) === 'qwen' ? 2 : -1
+  if (posizione < 0) return undefined
+  const valori = new Map<string, string>()
+  const argomenti = token.slice(posizione + 1)
+  // Solo `qwen -p`: una sessione interattiva di qualcuno non e un lavoro.
+  if (!argomenti.some(t => t === '-p' || t === '--print')) return undefined
+  for (let i = 0; i < argomenti.length; i += 1) {
+    const grezzo = argomenti[i] ?? ''
+    const uguale = grezzo.startsWith('--') ? grezzo.indexOf('=') : -1
+    const nome = uguale > 0 ? grezzo.slice(0, uguale) : grezzo
+    if (!OPZIONI_QWEN.has(nome)) continue
+    const valore = uguale > 0 ? grezzo.slice(uguale + 1) : argomenti[(i += 1)]
+    if (valore !== undefined) valori.set(nome, valore)
+  }
+  const cartella = valori.get('-w') ?? valori.get('--cwd')
+
+  return {
+    esecutore: 'qwen',
+    pid,
+    durataSec,
+    nome: valori.get('-n') ?? valori.get('--name') ?? (cartella === undefined ? `qwen-${pid}` : ultimoSegmento(cartella)),
+    ...(valori.has('-m') || valori.has('--model') ? { modello: valori.get('-m') ?? valori.get('--model') } : {}),
+    ...(valori.has('--reasoning-effort') ? { effort: valori.get('--reasoning-effort') } : {}),
+    ...(cartella === undefined ? {} : { cartella }),
+  }
+}
+
 function leggiRigaPs(riga: string): ProcessoCodex | undefined {
   const m = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(riga)
   if (m === null) return undefined
@@ -228,7 +272,8 @@ function leggiRigaPs(riga: string): ProcessoCodex | undefined {
   const posizione = token.findIndex(
     (t, i) => t === 'exec' && /(^|\/)codex(\.js)?$/.test(token[i - 1] ?? ''),
   )
-  if (durataSec === undefined || posizione < 0) return undefined
+  if (posizione < 0) return durataSec === undefined ? undefined : leggiRigaQwen(Number(m[1]), durataSec, token)
+  if (durataSec === undefined) return undefined
   if (/(^|\/)e?grep$/.test(token[0] ?? '')) return undefined
 
   const pid = Number(m[1])
@@ -256,7 +301,7 @@ export function parsePs(uscita: string): ProcessoCodex[] {
   const viste = new Set<string>()
 
   return trovati.filter(p => {
-    const chiave = p.output ?? p.cartella ?? `pid:${p.pid}`
+    const chiave = p.esecutore === 'qwen' ? `qwen:${p.nome}` : (p.output ?? p.cartella ?? `pid:${p.pid}`)
     if (viste.has(chiave)) return false
     viste.add(chiave)
 

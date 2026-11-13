@@ -30,13 +30,13 @@ type Risposta = { result: string } | { deny: string }
 
 const SCHEMA_COMPITI = {
   type: 'array',
-  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: claude (predefinito) o codex. tipo: tipo di agente Claude. scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
+  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: claude (predefinito), codex o qwen (Qwen Code: con scrive=false legge soltanto). tipo: tipo di agente Claude. scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
   items: {
     type: 'object',
     properties: {
       nome: { type: 'string' },
       prompt: { type: 'string' },
-      esecutore: { type: 'string', enum: ['claude', 'codex'] },
+      esecutore: { type: 'string', enum: ['claude', 'codex', 'qwen'] },
       tipo: { type: 'string' },
       scrive: { type: 'boolean' },
       dopo: { type: 'array', items: { type: 'string' } },
@@ -49,7 +49,7 @@ const SCHEMA_COMPITI = {
 export const STRUMENTI_SCIAME = [
   {
     name: 'sciame_avvia',
-    description: 'Lancia uno sciame di agenti Claude e Codex su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
+    description: 'Lancia uno sciame di agenti Claude, Codex e Qwen su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -169,7 +169,9 @@ async function lanciaClaude($: EngineInterface, s: Sciame, c: Compito): Promise<
   }
 }
 
+/** Codex o Qwen: stesso lancio staccato, cambia la CLI (e per Qwen il permesso, da `scrive`). */
 async function lanciaCodex($: EngineInterface, home: string, s: Sciame, c: Compito): Promise<Partial<Compito>> {
+  const esecutore = c.esecutore === 'qwen' ? 'qwen' : 'codex'
   const repo = await $.session.repo().catch(() => undefined)
   const cartella = c.scrive ? await preparaWorktree($, s, c) : repo?.root ?? (await $.session.cwd())
   const su = c.tentativi > 0 ? gradinoSu(c) : undefined
@@ -179,7 +181,8 @@ async function lanciaCodex($: EngineInterface, home: string, s: Sciame, c: Compi
     cartella,
     prompt: promptLavoratore(s, { ...c, cartella }),
     ...(sforzo === undefined ? {} : { sforzo }),
-  })
+    ...(esecutore === 'qwen' ? { scrive: c.scrive } : {}),
+  }, esecutore)
   if ('deny' in esito) throw new Error(esito.deny)
   const letto = /sforzo (low|medium|high)/.exec(esito.result)?.[1]
 
@@ -219,11 +222,11 @@ export async function notaFine($: EngineInterface, agenteId: string, motivo: str
   await giro($)
 }
 
-/** Esito di un compito Codex finito, dal suo log: `undefined` se e ancora vivo. */
+/** Esito di un compito Codex o Qwen finito, dal suo log: `undefined` se e ancora vivo. */
 async function esitoCodex($: EngineInterface, home: string, s: Sciame, c: Compito): Promise<{ isOk: boolean; testo: string } | undefined> {
   const nome = indirizzo(s, c)
   if (await isInCorso($, home, nome)) return undefined
-  const p = percorsiLavoro(home, nome)
+  const p = percorsiLavoro(home, nome, c.esecutore === 'qwen' ? 'qwen' : 'codex')
   const log = (await $.fs.exists(p.eseguiLog)) ? parseEseguiLog(await $.fs.read(p.eseguiLog)).voci : []
   const voce = [...log].reverse().find(v => v.nome === nome)
   // Il processo e partito ma lo script non ha ancora scritto la sua riga.

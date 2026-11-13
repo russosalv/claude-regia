@@ -5,8 +5,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import { isInCorso, lancia } from './codex-avvia'
-import { SFORZI, componiPrompt, intestazioneLog, isNomeValido, percorsiLavoro } from './codex'
-import type { Sforzo } from './codex'
+import { ESECUTORI_CLI, SFORZI, componiPrompt, intestazioneLog, isNomeValido, percorsiLavoro } from './codex'
+import type { EsecutoreCli, Sforzo } from './codex'
 import { leggiConfig, leggiHome } from './fonti'
 import { conLancio, leggiMemoriaAgenti, modificaMemoria } from './memoria-agenti'
 import { cartellaDi, messaggioErrore } from './parsers'
@@ -19,6 +19,13 @@ export const DESCRIZIONE_RIPRENDI = [
   'Parte staccato come codex_avvia e risponde subito; il log del giro prima resta in <nome>.storico.log. Rifiuta un lavoro ancora in corso.',
 ].join(' ')
 
+export const NOME_TOOL_QWEN_RIPRENDI = 'qwen_riprendi'
+
+export const DESCRIZIONE_QWEN_RIPRENDI = [
+  'Riprende un lavoro Qwen gia finito (qwen --resume) mandandogli un nuovo messaggio: Qwen continua la stessa sessione, con il suo contesto.',
+  'Parte staccato come qwen_avvia, con lo stesso permesso del primo giro, e risponde subito. Rifiuta un lavoro ancora in corso.',
+].join(' ')
+
 export const SCHEMA_RIPRENDI = {
   type: 'object',
   properties: {
@@ -29,22 +36,45 @@ export const SCHEMA_RIPRENDI = {
   additionalProperties: false,
 } as const
 
-/** Il log del lavoro: quello di codex_avvia, o quello accanto a uno dei log degli script. */
-async function trovaLog($: EngineInterface, home: string, nome: string): Promise<string | undefined> {
+/** Il log del lavoro e di quale CLI e: quello di codex_avvia o qwen_avvia, o quello accanto a uno dei log degli script. */
+async function trovaLog($: EngineInterface, home: string, nome: string): Promise<{ log: string; esecutore: EsecutoreCli } | undefined> {
   const { codexLogs } = (await leggiConfig($, home)).dati
-  const candidati = [percorsiLavoro(home, nome).log, ...codexLogs.map(l => `${cartellaDi(l)}/${nome}.log`)]
-  for (const percorso of candidati) {
-    if (await $.fs.exists(percorso)) return percorso
+  const candidati = [
+    ...ESECUTORI_CLI.map(esecutore => ({ log: percorsiLavoro(home, nome, esecutore).log, esecutore })),
+    ...codexLogs.map(l => ({ log: `${cartellaDi(l)}/${nome}.log`, esecutore: 'codex' as const })),
+  ]
+  for (const c of candidati) {
+    if (await $.fs.exists(c.log)) return c
   }
 
   return undefined
 }
 
-type Ripresa = { sessione: string; cartella: string; modello?: string; sforzo: Sforzo }
+type Ripresa = { sessione: string; cartella: string; modello?: string; sforzo: Sforzo | ''; esecutore: EsecutoreCli; permesso?: 'auto' | 'default' }
+
+async function leggiSeEsiste($: EngineInterface, percorso: string): Promise<string | undefined> {
+  return (await $.fs.exists(percorso)) ? (await $.fs.read(percorso)).trim() : undefined
+}
+
+/** Qwen non ha un'intestazione nel log: sessione, cartella e permesso li ha scritti lo script accanto al log. */
+async function datiRipresaQwen($: EngineInterface, home: string, nome: string): Promise<Ripresa | string> {
+  const p = percorsiLavoro(home, nome, 'qwen')
+  const sessione = await leggiSeEsiste($, p.sessione)
+  if (sessione === undefined || !/^[0-9a-f-]{8,64}$/i.test(sessione)) return `non trovo l'id della sessione Qwen di "${nome}"`
+  const cartella = await leggiSeEsiste($, p.cartellaLavoro)
+  if (cartella === undefined || !(await $.fs.exists(cartella))) return `la cartella del lavoro "${nome}" non esiste piu`
+  const lancio = (await leggiMemoriaAgenti($, await $.session.id())).dati.lanci[nome]
+  const permesso = (await leggiSeEsiste($, p.permesso)) === 'default' ? 'default' : 'auto'
+  const sforzo = SFORZI.find(s => s === lancio?.sforzo) ?? ''
+
+  return { sessione, cartella, modello: lancio?.modello, sforzo, esecutore: 'qwen', permesso }
+}
 
 async function datiRipresa($: EngineInterface, home: string, nome: string): Promise<Ripresa | string> {
-  const log = await trovaLog($, home, nome)
-  if (log === undefined) return `non trovo il log del lavoro "${nome}"`
+  const trovato = await trovaLog($, home, nome)
+  if (trovato === undefined) return `non trovo il log del lavoro "${nome}"`
+  if (trovato.esecutore === 'qwen') return datiRipresaQwen($, home, nome)
+  const { log } = trovato
   const testa = intestazioneLog(await $.fs.read(log))
   const fileSessione = percorsiLavoro(home, nome).sessione
   const salvata = (await $.fs.exists(fileSessione)) ? (await $.fs.read(fileSessione)).trim() : undefined
@@ -55,32 +85,34 @@ async function datiRipresa($: EngineInterface, home: string, nome: string): Prom
   const config = (await leggiConfig($, home)).dati
   const sforzo = SFORZI.find(s => s === (lancio?.sforzo ?? testa.sforzo)) ?? 'medium'
 
-  return { sessione, cartella: testa.cartella, modello: lancio?.modello ?? testa.modello ?? config.codexModello, sforzo }
+  return { sessione, cartella: testa.cartella, modello: lancio?.modello ?? testa.modello ?? config.codexModello, sforzo, esecutore: 'codex' }
 }
 
-/** Il corpo del tool (e del tasto ↻ riprendi). */
-export async function codexRiprendi($: EngineInterface, grezzi: unknown): Promise<{ result: string } | { deny: string }> {
+/** Il corpo dei tool `codex_riprendi` e `qwen_riprendi` (e del tasto ↻ riprendi): la CLI la dice il log del lavoro. */
+export async function codexRiprendi($: EngineInterface, grezzi: unknown, tool = NOME_TOOL_RIPRENDI): Promise<{ result: string } | { deny: string }> {
   try {
     const argomenti = (typeof grezzi === 'object' && grezzi !== null ? grezzi : {}) as { nome?: unknown; messaggio?: unknown }
     const nome = typeof argomenti.nome === 'string' ? argomenti.nome.trim() : undefined
     const messaggio = typeof argomenti.messaggio === 'string' ? argomenti.messaggio : ''
-    if (!isNomeValido(nome)) return { deny: 'codex_riprendi: nome non valido' }
-    if (messaggio.trim() === '') return { deny: 'codex_riprendi: il messaggio e vuoto' }
+    if (!isNomeValido(nome)) return { deny: `${tool}: nome non valido` }
+    if (messaggio.trim() === '') return { deny: `${tool}: il messaggio e vuoto` }
     const home = await leggiHome($)
-    if (home === undefined) return { deny: 'codex_riprendi: HOME non definita' }
-    if (await isInCorso($, home, nome)) return { deny: `codex_riprendi: "${nome}" e ancora in corso: scrivigli con posta_invia` }
+    if (home === undefined) return { deny: `${tool}: HOME non definita` }
+    if (await isInCorso($, home, nome)) return { deny: `${tool}: "${nome}" e ancora in corso: scrivigli con posta_invia` }
     const r = await datiRipresa($, home, nome)
-    if (typeof r === 'string') return { deny: `codex_riprendi: ${r}` }
-    const percorsi = percorsiLavoro(home, nome)
+    if (typeof r === 'string') return { deny: `${tool}: ${r}` }
+    const percorsi = percorsiLavoro(home, nome, r.esecutore)
     await $.fs.write(percorsi.riprendi, componiPrompt(messaggio, undefined, [paragrafoPosta(nome, percorsiPosta(home).cli)]))
-    const pid = await lancia($, { home, nome, cartella: r.cartella, modello: r.modello, sforzo: r.sforzo, riprendi: r.sessione })
+    const pid = await lancia($, { home, nome, cartella: r.cartella, modello: r.modello, sforzo: r.sforzo, riprendi: r.sessione, esecutore: r.esecutore, permesso: r.permesso })
     const inizioMs = await $.clock.now()
     await modificaMemoria($, await $.session.id(), m => conLancio(m, nome, {
       pid, modello: r.modello, sforzo: r.sforzo, motivo: 'ripresa', cartella: r.cartella, inizioMs,
     }))
 
-    return { result: `Lavoro Codex "${nome}" ripreso (sessione ${r.sessione}, pid ${pid}, ${r.modello ?? 'modello di Codex'} ${r.sforzo}). Log: ${percorsi.log}; esito: ${percorsi.esito}.` }
+    const cli = r.esecutore === 'qwen' ? 'Qwen' : 'Codex'
+
+    return { result: `Lavoro ${cli} "${nome}" ripreso (sessione ${r.sessione}, pid ${pid}, ${r.modello ?? `modello di ${cli}`} ${r.sforzo}). Log: ${percorsi.log}; esito: ${percorsi.esito}.` }
   } catch (errore) {
-    return { deny: `codex_riprendi: ${messaggioErrore(errore)}` }
+    return { deny: `${tool}: ${messaggioErrore(errore)}` }
   }
 }
