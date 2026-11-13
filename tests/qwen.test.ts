@@ -37,8 +37,8 @@ test('validaRichiesta legge scrive; lo schema di qwen_avvia lo ha e Codex no', (
 test('parsePs riconosce un qwen lanciato dallo script, anche dietro timeout, e non un bash che ne parla', () => {
   const ps = [
     '  PID ELAPSED COMMAND',
-    ` 500 01:10 timeout 14400 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --session-id abc -n sciame-a -w ${WORKTREE} -p`,
-    ` 501 01:10 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --session-id abc -n sciame-a -w ${WORKTREE} -p`,
+    ` 500 01:10 timeout 14400 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --strict-mcp-config --session-id abc -n sciame-a -w ${WORKTREE} -p`,
+    ` 501 01:10 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --strict-mcp-config --session-id abc -n sciame-a -w ${WORKTREE} -p`,
     ' 600 00:30 qwen -p fai una cosa --permission-mode default',
     ' 650 40:00 qwen',
     ` 700 05:00 /bin/bash -c cd ${WORKTREE} && timeout 1500 qwen -p "ciao" --permission-mode default`,

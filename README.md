@@ -232,9 +232,10 @@ Una casella sola, `~/.claude/regia/posta/posta.jsonl`: una riga JSON per messagg
 Stessa idea e stesso codice di Codex, con `qwen` al posto di `codex exec`. `qwen_avvia(nome, cartella, prompt, regole?, sforzo?, modello?, scrive?)` scrive prompt, log ed esito in `~/.claude/regia/qwen/<nome>/` e le righe `inizio`/`fine` in `~/.claude/regia/qwen/esegui.log` (sempre tra le fonti del pane, come quello di Codex). Lo script `script/qwen-esegui` esegue, dalla cartella del lavoro e con `nice`:
 
 ```
-timeout 14400 qwen [-m <modello>] [--reasoning-effort <sforzo>] --permission-mode <auto|default> --session-id <uuid> -n <nome> -w <cartella> -p < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
+timeout 14400 qwen [-m <modello>] [--reasoning-effort <sforzo>] --permission-mode <auto|default> --strict-mcp-config --session-id <uuid> -n <nome> -w <cartella> -p < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
 ```
 
+- **`--strict-mcp-config`**: sempre, anche in ripresa. Con un `.mcp.json` nel progetto `qwen -p` carica i suoi server MCP e il provider risponde sempre `provider_error`; cosi non ne carica nessuno. Un `provider_error` nell'esito o nel log vale guasto (exit 1) anche con exit 0.
 - **Prompt da stdin**: niente limite di argomenti e niente prompt in `ps`. Lo stdout di `qwen -p` e la risposta finale: e l'esito (`<nome>.esito.md`). Una risposta vuota con exit 0 vale come guasto (exit 1).
 - **Permesso**: `scrive` (predefinito `true`) usa `--permission-mode auto`, `scrive: false` usa `default`. Provato su qwen 1.0.0-preview.1 con un compito che crea un file, lancia una shell, fa `git commit` e `python3`: `accept_edits` scrive i file ma rifiuta i comandi shell che non sono di sola lettura; `dont_ask` rifiuta tutto; `auto` e `bypass_permissions` riescono, e `auto` e la meno permissiva. `default` legge e lancia `ls`, ma rifiuta le scritture. Chi ha bisogno di piu (installare pacchetti, comandi che `auto` rifiuta) non ha un'uscita: la mod non usa `bypass_permissions`.
 - **Sforzo**: se non lo dai decide Qwen (nessun giudizio di haiku). **Modello**: quello che dai, altrimenti il predefinito di Qwen (non c'e un `qwenModello` in config).

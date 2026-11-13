@@ -2,6 +2,7 @@
 # Lancia un lavoro Qwen Code per la mod regia (tool qwen_avvia): nice, un solo tentativo, righe di inizio e fine in
 # esegui.log. Il prompt entra da stdin (<nome>.prompt.md): niente limite di argv e niente prompt in `ps`.
 # Con REGIA_RIPRENDI=<id sessione qwen> riprende quella sessione con il messaggio di <nome>.riprendi.md (qwen_riprendi).
+# --strict-mcp-config: niente server MCP del progetto (.mcp.json), con cui il provider risponde provider_error.
 # Permesso: `auto` scrive file e lancia comandi (provato: accept_edits rifiuta git e python); `default` legge soltanto.
 # Uso: qwen-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo|""> <esegui.log> <permesso> [ramo-base]
 set -u
@@ -30,10 +31,12 @@ else
 fi
 echo "$(date +%H:%M) inizio $n" >> "$L"
 # -n e -w servono anche a `ps`: la mod riconosce il lavoro dal nome.
-( cd "$W" && nice -n 10 timeout "$T" qwen "${modello[@]}" "${sforzo[@]}" --permission-mode "$P" "${sessione[@]}" -n "$n" -w "$W" -p < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
+( cd "$W" && nice -n 10 timeout "$T" qwen "${modello[@]}" "${sforzo[@]}" --permission-mode "$P" --strict-mcp-config "${sessione[@]}" -n "$n" -w "$W" -p < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
 rc=$?
 # Una risposta vuota con exit 0 e un guasto (API, rete): meglio che lo sciame lo rilanci.
 [ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
+# provider_error: qwen lo scrive nell'esito (stdout) e puo uscire 0; con i server MCP del progetto e il guasto di sempre.
+[ "$rc" -eq 0 ] && grep -qs 'provider_error' "$D/$n.esito.md" "$D/$n.log" && rc=1
 commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
 echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
 rm -f "$n.pid"
