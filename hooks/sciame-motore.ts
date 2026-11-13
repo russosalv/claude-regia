@@ -3,7 +3,7 @@
 // sopra chi fallisce e alla fine sveglia la principale. La lavagna sta in
 // `$.store`: sopravvive a un ricaricamento della mod.
 
-import type { EngineInterface, Timer } from 'claude-code'
+import type { AgentInfo, EngineInterface, Timer } from 'claude-code'
 
 import { codexAvvia, isInCorso } from './codex-avvia'
 import { percorsiLavoro } from './codex'
@@ -14,7 +14,7 @@ import { ricordaScelta, ricordaSforzo, scegli } from './modelli'
 import { conRisparmio } from './orchestra'
 import { leggiMemoriaAgenti } from './memoria-agenti'
 import { messaggioErrore, parseEseguiLog } from './parsers'
-import { CHIAVE_SCIAMI, avvisoFine, conCompiti, conDati, conEsito, conLancio, creaSciame, daLanciare, descrivi, ferma, indirizzo, isFinito, promptLavoratore } from './sciame'
+import { CHIAVE_SCIAMI, avvisoFine, conCompiti, conDati, conEsito, conFermo, conLancio, creaSciame, daLanciare, descrivi, ferma, indirizzo, isFinito, promptLavoratore } from './sciame'
 import type { Compito, Sciame } from './sciame'
 
 const MASSIMO_SCIAMI = 5
@@ -22,6 +22,9 @@ const GIRO_MS = 5_000
 /** Un agente sparito dalla lista prima di questo tempo puo non esserci ancora. */
 const TOLLERANZA_LISTA_MS = 30_000
 const ESITO_BREVE = 1_200
+/** Il motore puo dire `waiting` un attimo dopo `turn.complete`: una fine appena sentita non si applica subito. */
+const ASSESTAMENTO_MS = GIRO_MS + 1_000
+const STATI_CONCLUSI: readonly string[] = ['completed', 'failed', 'killed']
 
 type Risposta = { result: string } | { deny: string }
 
@@ -208,11 +211,11 @@ async function salvaEsito($: EngineInterface, home: string, s: Sciame, c: Compit
 }
 
 // Le fini sentite da `turn.complete`, finche il giro non le applica.
-const finiti = new Map<string, { isOk: boolean; testo: string }>()
+const finiti = new Map<string, { isOk: boolean; testo: string; oraMs: number }>()
 
 /** Hook di `turn.complete` di un subagente: se e di uno sciame, avanza. */
 export async function notaFine($: EngineInterface, agenteId: string, motivo: string, testo: string): Promise<void> {
-  finiti.set(agenteId, { isOk: motivo === 'answer', testo })
+  finiti.set(agenteId, { isOk: motivo === 'answer', testo, oraMs: await $.clock.now() })
   await giro($)
 }
 
@@ -235,12 +238,28 @@ async function esitoCodex($: EngineInterface, home: string, s: Sciame, c: Compit
   return { isOk, testo: risposta || `exit ${voce.exitCode ?? '?'}, ${voce.commit ?? 0} commit` }
 }
 
-/** Esito di un compito Claude: dalla fine sentita, o dalla lista se la mod l'ha persa. */
-async function esitoClaude($: EngineInterface, c: Compito): Promise<{ isOk: boolean; testo: string } | undefined> {
+type Fine = { isOk: boolean; testo: string }
+
+/**
+ * Esito di un compito Claude: dalla fine sentita, o dalla lista se la mod l'ha persa.
+ * `turn.complete` non dice se l'agente ha chiuso il turno con un suo comando in
+ * background ancora in corso (il motore lo notifica come "waiting on its own
+ * background work", con un rapporto provvisorio): il segnale strutturato e lo
+ * stato `waiting` in `$.agent.list()`. Allora `'provvisorio'`: il compito non e finito.
+ * shortcut: `waiting` vale anche per approvazione di un piano o chiamata Agent; si
+ * guarda solo dopo una fine sentita, e in ogni caso scade (`attesaMinuti`).
+ */
+async function esitoClaude($: EngineInterface, c: Compito, agenti: readonly AgentInfo[]): Promise<Fine | 'provvisorio' | undefined> {
   if (c.agenteId === undefined) return undefined
+  const voce = agenti.find(a => a.id === c.agenteId)
   const sentita = finiti.get(c.agenteId)
-  if (sentita !== undefined) return sentita
-  const voce = (await $.agent.list()).find(a => a.id === c.agenteId)
+  if (sentita !== undefined) {
+    if (sentita.isOk && voce?.status === 'waiting') return 'provvisorio'
+    const isSettled = voce === undefined || STATI_CONCLUSI.includes(voce.status) || !sentita.isOk || (await $.clock.now()) - sentita.oraMs >= ASSESTAMENTO_MS
+    if (isSettled) return sentita
+
+    return undefined
+  }
   if (voce?.status === 'failed' || voce?.status === 'killed') return { isOk: false, testo: `agente ${voce.status}` }
   if (voce?.status === 'completed') return { isOk: true, testo: 'completato (rapporto non catturato: la mod e stata ricaricata)' }
   if (voce !== undefined) return undefined
@@ -263,11 +282,33 @@ async function conInfoVere($: EngineInterface, sessione: string, s: Sciame): Pro
   }, s)
 }
 
+/** Un compito fermo in attesa di un suo comando da troppo e da controllare: non riparte da solo, la principale lo sa. */
+async function controllaAttesa($: EngineInterface, home: string, s: Sciame, c: Compito): Promise<Sciame> {
+  if (c.attesaMs === undefined) return s
+  const trascorsoMs = (await $.clock.now()) - c.attesaMs
+  if (trascorsoMs < (await leggiConfig($, home)).dati.attesaMinuti * 60_000) return s
+  const esito = `fermo, da controllare: si e fermato in attesa di un suo comando in background e non ha ripreso da ${Math.round(trascorsoMs / 60_000)} min`
+  await sveglia($, `Sciame ${s.id}: ${c.nome} fermo`, `Sciame ${s.id}, compito ${c.nome} (${indirizzo(s, c)}): ${esito}. Guarda il suo worktree, poi riprendilo con SendMessage o rilancialo; i compiti che dipendono da lui non partono.`)
+
+  return conFermo(s, c.nome, esito)
+}
+
 async function avanzaUno($: EngineInterface, home: string, sessione: string, iniziale: Sciame): Promise<Sciame> {
   let s = await conInfoVere($, sessione, iniziale)
+  const agenti = s.compiti.some(x => x.stato === 'corsa' && x.esecutore === 'claude') ? await $.agent.list() : []
   for (const c of s.compiti.filter(x => x.stato === 'corsa')) {
-    const fine = c.esecutore === 'claude' ? await esitoClaude($, c) : await esitoCodex($, home, s, c)
-    if (fine === undefined) continue
+    const fine = c.esecutore === 'claude' ? await esitoClaude($, c, agenti) : await esitoCodex($, home, s, c)
+    if (fine === 'provvisorio') {
+      if (c.agenteId !== undefined) finiti.delete(c.agenteId)
+      s = conDati(s, c.nome, { attesaMs: await $.clock.now() })
+      continue
+    }
+    if (fine === undefined) {
+      const ripreso = c.agenteId !== undefined && agenti.find(a => a.id === c.agenteId)?.status === 'running'
+      if (c.attesaMs !== undefined && ripreso) s = conDati(s, c.nome, { attesaMs: undefined })
+      else if (c.attesaMs !== undefined) s = await controllaAttesa($, home, s, c)
+      continue
+    }
     const fileEsito = await salvaEsito($, home, s, c, fine.testo)
     s = conEsito(s, c.nome, { isOk: fine.isOk, esito: fine.testo.slice(0, ESITO_BREVE), fileEsito })
     if (c.agenteId !== undefined) finiti.delete(c.agenteId)
@@ -277,14 +318,18 @@ async function avanzaUno($: EngineInterface, home: string, sessione: string, ini
 }
 
 async function avvisa($: EngineInterface, s: Sciame): Promise<void> {
-  const testo = avvisoFine(s)
-  $.ui.toast(`Sciame ${s.id} finito`, { timeoutMs: 8_000 })
+  await sveglia($, `Sciame ${s.id} finito`, avvisoFine(s))
+}
+
+/** Un toast e un messaggio alla principale. */
+async function sveglia($: EngineInterface, titolo: string, testo: string): Promise<void> {
+  $.ui.toast(titolo, { timeoutMs: 8_000 })
   try {
     // Senza superficie nessuno aspetta la sveglia: il modello legge la riga al prossimo giro.
     if ((await $.session.surfaces()).length > 0) void $.prompt.submit({ text: testo }).catch(() => undefined)
     else await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: testo }] } })
   } catch (errore) {
-    $.ui.toast(`regia: sciame ${s.id}: ${messaggioErrore(errore)}`)
+    $.ui.toast(`regia: ${titolo}: ${messaggioErrore(errore)}`)
   }
 }
 

@@ -158,6 +158,7 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     sciameParallelo: 4,
     sveglia: true,
     stalloMinuti: 30,
+    attesaMinuti: 45,
     quickModello: 'sonnet',
   })
   expect(ok.avvisi).toEqual([])

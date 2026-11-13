@@ -8,7 +8,7 @@ import { rigaModi, testoDoctor } from '../hooks/doctor'
 import { CHIAVE_DIPENDENZE, leggiArgomentiPonytail, statoDaImpostazioni } from '../hooks/ponytail'
 import { parseConfig } from '../hooks/registro'
 import { RIFIUTO_SCRITTURA, TESTI_ORCHESTRA, fileDaScrivere, isDelProgetto } from '../hooks/orchestra'
-import { avvisoFine, conCompiti, conEsito, conLancio, creaSciame, daLanciare, ferma, isFinito, promptLavoratore } from '../hooks/sciame'
+import { REGOLA_PRIMO_PIANO, avvisoFine, conCompiti, conEsito, conLancio, creaSciame, daLanciare, ferma, isFinito, promptLavoratore } from '../hooks/sciame'
 import type { Sciame } from '../hooks/sciame'
 import { HOME, SESSIONE } from './fixture'
 import { PROGETTO, ZERO, ambiente } from './ambiente'
@@ -90,8 +90,13 @@ function motoreSciame($: Engine, on: On, opzioni: { surfaces?: string[] } = {}) 
   })
   on('session.surfaces', () => ({ value: (opzioni.surfaces ?? ['terminal']) as never }))
   on('prompt.submit', (_, e) => ({ text: e.text }) as never)
-  const finisce = (agentId: string, reason = 'answer', answer = `rapporto ${agentId}`) =>
-    $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't', agentId, reason } as never)
+  // Lo stato che il motore da all'agente quando chiude il turno: `completed`, o `waiting` se ha un suo comando in background.
+  const finisce = (agentId: string, reason = 'answer', answer = `rapporto ${agentId}`, status = 'completed') => {
+    const agente = agenti.find(a => a.id === agentId)
+    if (agente !== undefined) agente.status = status
+
+    return $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't', agentId, reason } as never)
+  }
 
   return { lanci, agenti, finisce }
 }
@@ -152,6 +157,53 @@ test('lo sciame lancia, avanza a ogni fine, rilancia sopra chi fallisce e svegli
   expect([...amb.scritti.keys()].some(p => p.startsWith(`${HOME}/.claude/regia/sciami/`) && p.endsWith('/a.md'))).toBe(true)
   await m.finisce('a4')
   expect(amb.avvisi.filter(a => a.endsWith('finito'))).toHaveLength(1)
+})
+
+test('un agente fermo in attesa di un suo comando in background non e finito: i dipendenti aspettano la notifica definitiva', async ($, on) => {
+  const amb = ambiente(on, { risposta: () => ({ isAnswered: true, text: '{"modello":"haiku","sforzo":"low"}', usage: ZERO }), agenti: () => m.agenti })
+  on('turn.complete', () => ({ text: '' }) as never)
+  const m = motoreSciame($, on)
+  await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
+  await avvia($, { obiettivo: 'prova', compiti: [{ nome: 'a', prompt: 'fai a' }, { nome: 'b', prompt: 'fai b', dopo: ['a'] }] })
+  const compiti = () => (amb.store.get(`regia.sciami.${SESSIONE}`) as Sciame[])[0]?.compiti ?? []
+  const stato = (nome: string) => compiti().find(c => c.nome === nome)
+
+  // Notifica provvisoria: "waiting on its own background work", rapporto di una riga.
+  await m.finisce('a1', 'answer', 'Attendo.', 'waiting')
+  await amb.clock?.advance(6_000)
+  expect(stato('a')).toMatchObject({ stato: 'corsa' })
+  expect(stato('a')?.attesaMs).toBeDefined()
+  expect(stato('a')?.esito).toBeUndefined()
+  expect(m.lanci.map(l => l.name.split('-')[1])).toEqual(['a'])
+  expect([...amb.scritti.keys()].some(p => p.endsWith('/a.md'))).toBe(false)
+
+  // Notifica definitiva dello stesso agente: ora si chiude e il dipendente parte con il rapporto vero.
+  await m.finisce('a1', 'answer', 'fatto, ramo sciame/x/a')
+  expect(stato('a')).toMatchObject({ stato: 'fatto', esito: 'fatto, ramo sciame/x/a' })
+  expect(m.lanci.map(l => l.name.split('-')[1])).toEqual(['a', 'b'])
+  expect(m.lanci[1]?.prompt).toContain('fatto, ramo sciame/x/a')
+  expect(m.lanci[1]?.prompt).toContain(REGOLA_PRIMO_PIANO)
+})
+
+test('se l\'agente in attesa non riprende entro attesaMinuti il compito e fermo, la principale e avvisata e i dipendenti non partono', async ($, on) => {
+  const amb = ambiente(on, { config: { attesaMinuti: 10 }, risposta: () => ({ isAnswered: true, text: '{"modello":"haiku","sforzo":"low"}', usage: ZERO }), agenti: () => m.agenti })
+  on('turn.complete', () => ({ text: '' }) as never)
+  const m = motoreSciame($, on)
+  await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
+  await avvia($, { obiettivo: 'prova', compiti: [{ nome: 'a', prompt: 'fai a' }, { nome: 'b', prompt: 'fai b', dopo: ['a'] }] })
+  const sciame = () => (amb.store.get(`regia.sciami.${SESSIONE}`) as Sciame[])[0]
+
+  await m.finisce('a1', 'answer', 'Attendo.', 'waiting')
+  await amb.clock?.advance(6_000)
+  await amb.clock?.advance(9 * 60_000)
+  expect(sciame()?.compiti.find(c => c.nome === 'a')?.stato).toBe('corsa')
+  await amb.clock?.advance(2 * 60_000)
+  const a = sciame()?.compiti.find(c => c.nome === 'a')
+  expect(a?.stato).toBe('fallito')
+  expect(a?.esito).toMatch(/fermo, da controllare/)
+  expect(sciame()?.compiti.find(c => c.nome === 'b')?.stato).toBe('bloccato')
+  expect(m.lanci).toHaveLength(1)
+  expect(amb.avvisi.some(t => t.includes('fermo'))).toBe(true)
 })
 
 test('sciame_avvia rifiuta chi scrive fuori da un repository', async ($, on) => {

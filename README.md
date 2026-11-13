@@ -112,10 +112,11 @@ sciame_avvia({
 - **Chi scrive ha un worktree suo** in `<repo>/.worktrees/<sciame>-<compito>`, ramo `sciame/<sciame>/<compito>`. La cartella si esclude da git con `.git/info/exclude`, il `.gitignore` non si tocca.
 - **Ogni agente sa** obiettivo, compagni e il rapporto dei compiti da cui dipende. Si scrivono con `posta_invia` e possono aggiungere lavoro con `sciame_aggiungi`.
 - **Chi fallisce riprova una volta**, un gradino sopra e sapendo perche ha fallito. Se fallisce ancora, chi dipende da lui si blocca e gli altri continuano.
+- **Un agente fermo in attesa di un suo comando non ha finito.** Se un subagente chiude il turno con un suo comando in background ancora in corso (per esempio una suite di test lanciata con `run_in_background`), il motore notifica un completamento provvisorio ("is waiting on its own background work", con un rapporto di una riga). Lo sciame lo riconosce dallo stato `waiting` in `$.agent.list()`: il compito resta in corso (la lavagna scrive "in attesa di un suo comando"), i dipendenti non partono e si chiude solo alla notifica definitiva dello stesso agente. Se non riprende entro `attesaMinuti` (predefinito 45, in config) il compito è segnato fallito, "fermo, da controllare", senza nuovo tentativo, e la principale viene avvisata subito. Ogni agente riceve anche la riga fissa di lanciare i comandi lunghi in primo piano.
 - **La principale non spende nulla mentre aspetta**: lo sciame risponde subito e la sveglia con un turno solo alla fine, con il riepilogo. I rapporti interi stanno in `~/.claude/regia/sciami/<id>/<compito>.md`.
 - `sciame_stato` e `/regia sciame` mostrano la lavagna; `sciame_ferma` annulla chi aspetta, chi corre finisce il suo. I compiti in attesa si vedono in scaletta nel pane.
 
-Limiti: l'unione dei rami resta a un delegato della principale; se la sessione si chiude i subagenti Claude muoiono con lei (i Codex no); un compito che finisce mentre la mod si ricarica risulta completato senza rapporto.
+Limiti: `turn.complete` non dice se la fine è provvisoria; il segnale è lo stato `waiting` dell'agente, che vale anche per un piano da approvare o una chiamata Agent (per questo il compito scade comunque). L'unione dei rami resta a un delegato della principale; se la sessione si chiude i subagenti Claude muoiono con lei (i Codex no); un compito che finisce mentre la mod si ricarica risulta completato senza rapporto.
 
 ## Sorveglianza e sveglia
 
@@ -281,6 +282,7 @@ Per ogni riga: nome del lavoro, esecutore (`claude` o `codex`), modello (con l'e
      "sciameParallelo": 4,
      "sveglia": true,
      "stalloMinuti": 30,
+     "attesaMinuti": 45,
      "quickModello": "sonnet",
      "codexModello": "nome-del-modello"
    }

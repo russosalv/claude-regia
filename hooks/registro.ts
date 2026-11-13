@@ -43,6 +43,8 @@ export type ConfigRegia = {
   sveglia: boolean
   /** Minuti senza segni di vita dopo cui un agente in corso e considerato fermo. */
   stalloMinuti: number
+  /** Minuti oltre i quali un compito dello sciame fermo in attesa di un suo comando in background e dato per fermo. */
+  attesaMinuti: number
   /** Il modello della principale in modalita quick (`/regia quick`). */
   quickModello: string
 }
@@ -162,6 +164,7 @@ function campoBooleano(grezzo: unknown, nome: string, predefinito: boolean): Cam
 }
 
 export const STALLO_PREDEFINITO_MIN = 30
+export const ATTESA_PREDEFINITA_MIN = 45
 export const QUICK_MODELLO_PREDEFINITO = 'sonnet'
 
 function campoStallo(grezzo: unknown): Campo<number> {
@@ -169,6 +172,13 @@ function campoStallo(grezzo: unknown): Campo<number> {
   if (typeof grezzo === 'number' && Number.isFinite(grezzo) && grezzo >= 5 && grezzo <= 1440) return { valore: grezzo, avvisi: [] }
 
   return { valore: STALLO_PREDEFINITO_MIN, avvisi: ['config.json: "stalloMinuti" deve essere un numero da 5 a 1440'] }
+}
+
+function campoAttesa(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: ATTESA_PREDEFINITA_MIN, avvisi: [] }
+  if (typeof grezzo === 'number' && Number.isFinite(grezzo) && grezzo >= 5 && grezzo <= 1440) return { valore: grezzo, avvisi: [] }
+
+  return { valore: ATTESA_PREDEFINITA_MIN, avvisi: ['config.json: "attesaMinuti" deve essere un numero da 5 a 1440'] }
 }
 
 function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
@@ -215,6 +225,7 @@ export function parseConfig(
     sciameParallelo: SCIAME_PARALLELO_PREDEFINITO,
     sveglia: true,
     stalloMinuti: STALLO_PREDEFINITO_MIN,
+    attesaMinuti: ATTESA_PREDEFINITA_MIN,
     quickModello: QUICK_MODELLO_PREDEFINITO,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
@@ -232,6 +243,7 @@ export function parseConfig(
   const parallelo = campoParallelo(o.sciameParallelo)
   const sveglia = campoBooleano(o.sveglia, 'sveglia', true)
   const stallo = campoStallo(o.stalloMinuti)
+  const attesa = campoAttesa(o.attesaMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
@@ -244,10 +256,11 @@ export function parseConfig(
     sciameParallelo: parallelo.valore,
     sveglia: sveglia.valore,
     stalloMinuti: stallo.valore,
+    attesaMinuti: attesa.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, attesa, quick].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

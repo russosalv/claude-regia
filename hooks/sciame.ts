@@ -23,6 +23,8 @@ export type Compito = {
   tentativi: number
   agenteId?: string
   lancioMs?: number
+  /** Da quando l'agente si e fermato in attesa di un suo comando in background: il compito non e finito. */
+  attesaMs?: number
   modello?: string
   sforzo?: string
   /** Il rapporto, accorciato; intero in `fileEsito`. */
@@ -144,6 +146,11 @@ function bloccaDipendenti(s: Sciame): Sciame {
   return attuale
 }
 
+/** Un compito fermo in attesa di un comando che non ha ripreso: da controllare. Niente nuovo tentativo, i dipendenti si bloccano. */
+export function conFermo(s: Sciame, nome: string, esito: string): Sciame {
+  return bloccaDipendenti(cambia(s, nome, c => ({ ...c, esito, stato: 'fallito' })))
+}
+
 /** Chi aspetta non parte piu; chi corre finisce il suo. */
 export function ferma(s: Sciame): Sciame {
   return { ...s, compiti: s.compiti.map((c): Compito => (c.stato === 'attesa' ? { ...c, stato: 'annullato' } : c)) }
@@ -159,6 +166,9 @@ export function daLanciare(s: Sciame): Compito[] {
 }
 
 export const isFinito = (s: Sciame): boolean => s.compiti.every(c => c.stato !== 'attesa' && c.stato !== 'corsa')
+
+/** Un agente che chiude il turno con un suo comando ancora in corso puo essere dato per concluso. */
+export const REGOLA_PRIMO_PIANO = 'Lancia i comandi lunghi in primo piano e non chiudere il turno finche non hai finito e committato: se chiudi con un comando ancora in corso il tuo compito puo essere considerato concluso.'
 
 /** Il testo di un compito: il lavoro, lo sciame intorno e cio che hanno trovato i suoi predecessori. */
 export function promptLavoratore(s: Sciame, c: Compito): string {
@@ -179,6 +189,7 @@ export function promptLavoratore(s: Sciame, c: Compito): string {
     `Lavori nello sciame ${s.id}, obiettivo: ${s.obiettivo}. Il tuo indirizzo e ${io}.`,
     ...(c.scrive ? [`Il tuo worktree e gia pronto: ${c.cartella ?? 'la cartella in cui parti'}, ramo sciame/${s.id}/${c.nome}. Lavora e fai commit solo li, non crearne altri e non toccare il ramo principale. Scrivi il nome del ramo nel rapporto.`] : []),
     ...(compagni.length === 0 ? [] : [`Compagni: ${compagni.join(', ')}. Se ti serve qualcosa da uno di loro chiediglielo invece di rifarlo.`]),
+    REGOLA_PRIMO_PIANO,
     c.esecutore === 'claude'
       ? 'Tool della regia, da caricare con ToolSearch se servono: mcp__regia__posta_invia (a un compagno o a "principale"), mcp__regia__sciame_stato, mcp__regia__sciame_aggiungi (lavoro emerso che non e tuo).'
       : 'Per i compagni usa la CLI della posta descritta sotto.',
@@ -189,10 +200,11 @@ const SEGNI: Readonly<Record<StatoCompito, string>> = { attesa: 'â—‹', corsa: 'â
 
 function rigaCompito(c: Compito, massimo: number): string {
   const dati = [c.esecutore, c.modello, c.sforzo, c.tentativi > 1 ? `tentativo ${c.tentativi}` : undefined].filter(Boolean).join(', ')
+  const attesa = c.stato === 'corsa' && c.attesaMs !== undefined ? ', in attesa di un suo comando' : ''
   const esito = c.esito === undefined ? '' : `: ${c.esito.replace(/\s+/g, ' ').slice(0, massimo)}`
   const file = c.fileEsito === undefined ? '' : ` [${c.fileEsito}]`
 
-  return `${SEGNI[c.stato]} ${c.nome} (${dati})${esito}${file}`
+  return `${SEGNI[c.stato]} ${c.nome} (${dati}${attesa})${esito}${file}`
 }
 
 /** La lavagna per il modello o per `/regia sciame`: poche righe. */
