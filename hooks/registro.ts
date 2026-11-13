@@ -45,6 +45,8 @@ export type ConfigRegia = {
   stalloMinuti: number
   /** Minuti oltre i quali un compito dello sciame fermo in attesa di un suo comando in background e dato per fermo. */
   attesaMinuti: number
+  /** Le attese del controllo di paracadute della sveglia, in minuti; l'ultima resta fissa. */
+  controlloMinuti: number[]
   /** Il modello della principale in modalita quick (`/regia quick`). */
   quickModello: string
 }
@@ -165,6 +167,7 @@ function campoBooleano(grezzo: unknown, nome: string, predefinito: boolean): Cam
 
 export const STALLO_PREDEFINITO_MIN = 30
 export const ATTESA_PREDEFINITA_MIN = 45
+export const CONTROLLO_PREDEFINITO_MIN: readonly number[] = [15, 30, 60]
 export const QUICK_MODELLO_PREDEFINITO = 'sonnet'
 
 function campoStallo(grezzo: unknown): Campo<number> {
@@ -179,6 +182,15 @@ function campoAttesa(grezzo: unknown): Campo<number> {
   if (typeof grezzo === 'number' && Number.isFinite(grezzo) && grezzo >= 5 && grezzo <= 1440) return { valore: grezzo, avvisi: [] }
 
   return { valore: ATTESA_PREDEFINITA_MIN, avvisi: ['config.json: "attesaMinuti" deve essere un numero da 5 a 1440'] }
+}
+
+function campoControllo(grezzo: unknown): Campo<number[]> {
+  if (grezzo === undefined) return { valore: [...CONTROLLO_PREDEFINITO_MIN], avvisi: [] }
+  const isValido = Array.isArray(grezzo) && grezzo.length >= 1 && grezzo.length <= 8 &&
+    grezzo.every(n => typeof n === 'number' && Number.isFinite(n) && n >= 5 && n <= 1440)
+  if (isValido) return { valore: grezzo as number[], avvisi: [] }
+
+  return { valore: [...CONTROLLO_PREDEFINITO_MIN], avvisi: ['config.json: "controlloMinuti" deve essere una lista di 1-8 numeri da 5 a 1440'] }
 }
 
 function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
@@ -226,6 +238,7 @@ export function parseConfig(
     sveglia: true,
     stalloMinuti: STALLO_PREDEFINITO_MIN,
     attesaMinuti: ATTESA_PREDEFINITA_MIN,
+    controlloMinuti: [...CONTROLLO_PREDEFINITO_MIN],
     quickModello: QUICK_MODELLO_PREDEFINITO,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
@@ -244,6 +257,7 @@ export function parseConfig(
   const sveglia = campoBooleano(o.sveglia, 'sveglia', true)
   const stallo = campoStallo(o.stalloMinuti)
   const attesa = campoAttesa(o.attesaMinuti)
+  const controllo = campoControllo(o.controlloMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
@@ -257,10 +271,11 @@ export function parseConfig(
     sveglia: sveglia.valore,
     stalloMinuti: stallo.valore,
     attesaMinuti: attesa.valore,
+    controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, attesa, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

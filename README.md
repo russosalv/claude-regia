@@ -123,8 +123,13 @@ Limiti: `turn.complete` non dice se la fine è provvisoria; il segnale è lo sta
 Una sessione lasciata sola (la notte) non deve fermarsi a meta piano. Ogni minuto la mod guarda la sessione:
 
 - **Agenti fermi.** Un lavoro in corso senza segni di vita da `stalloMinuti` (predefinito 30, in config) e fermo. Per un Codex conta l'ultima scrittura del suo log o, se il log tace (durante un comando lungo Codex non scrive su stderr), del suo file di sessione `~/.codex/sessions/.../rollout-*-<id>.jsonl`, che Codex aggiorna a ogni attesa del comando: se tacciono entrambi, la mod uccide il `codex exec`, lo script scrive `fine` con exit diverso da 0 e, se era di uno sciame, lo sciame lo rilancia un gradino sopra. Per un subagente Claude conta l'ultimo passo (`turn.step`): una mod non puo fermarlo, quindi lo segnala alla principale perche usi `TaskStop` e rilanci il compito. Ogni stallo si segnala una volta.
-- **Sveglia della principale** (solo in modalita long; in medio la sorveglianza guarda solo gli agenti fermi, in quick e spenta). Se la principale non ha un turno in corso da 3 minuti, il piano in scaletta ha voci aperte (`scaletta` o `in_corso`) e nessun agente lavora (o un lavoro e finito senza che lei lo abbia visto), la mod le manda un turno: le voci aperte e l'ordine di andare avanti da sola, segnando `bloccato` cio che non puo fare. Se l'ultimo turno era finito per un errore dell'API (limiti, rete), glielo dice e lei riprende.
-- **Niente giri a vuoto.** Senza progressi (nessuna voce o lavoro che cambia stato) l'attesa raddoppia a ogni sveglia, 3, 6, 12, 24, 48 minuti; dopo 5 la mod smette e avvisa con un toast. Un progresso la riapre. Se nel campo del prompt c'e una bozza, la mod non passa davanti alla persona. Se fermi la principale con Esc, la mod non la sveglia piu (ne le riferisce gli stalli) finche non le scrivi tu.
+- **Sveglia della principale** (solo in modalita long; in medio la sorveglianza guarda solo gli agenti fermi, in quick e spenta). Guidata dagli eventi: con agenti al lavoro la mod tace, perche la principale non ha nulla da decidere e ogni sveglia le costa contesto. Il piano in scaletta deve avere voci aperte (`scaletta` o `in_corso`) e la principale non deve avere un turno in corso da 3 minuti; poi:
+  - **nessun agente lavora**: la mod le manda un turno per andare avanti da sola, segnando `bloccato` cio che non puo fare;
+  - **agenti al lavoro e una novita per lei** (un lavoro finito o fallito, un messaggio della posta arrivato e non letto): una sola sveglia che le raggruppa tutto. Gli sciami hanno il loro riepilogo alla fine e la risposta della persona a una domanda arriva da sola come turno: la mod non li duplica;
+  - **agenti al lavoro e nulla di nuovo**: solo un controllo di paracadute ad attesa crescente, `controlloMinuti` (predefinito `[15, 30, 60]`: poi resta a 60). Riparte dal primo valore quando la principale fa un turno per altri motivi (un suo turno dopo una sveglia della mod non lo azzera).
+
+  Il messaggio e corto: cio che e cambiato da quando la principale ha guardato (lavori finiti o falliti con il nome, posta non letta), i conteggi (voci aperte, agenti in corso, domande aperte) e una riga di istruzioni; l'elenco delle voci lo legge lei dagli strumenti. Se l'ultimo turno era finito per un errore dell'API (limiti, rete), glielo dice e lei riprende.
+- **Niente giri a vuoto.** Con nessuno al lavoro, senza progressi (nessuna voce o lavoro che cambia stato) l'attesa raddoppia a ogni sveglia, 3, 6, 12, 24, 48 minuti; dopo 5 la mod smette e avvisa con un toast. Un progresso la riapre. Se nel campo del prompt c'e una bozza, la mod non passa davanti alla persona. Se fermi la principale con Esc, la mod non la sveglia piu (ne le riferisce gli stalli) finche non le scrivi tu.
 
 Perche funzioni il piano deve stare in scaletta: la regola dell'orchestratore lo chiede (ogni voce con `scaletta_scrivi`, aggiornata a ogni passo). Vale solo con una superficie (non `claude -p`). `/regia sveglia off` la spegne.
 
@@ -283,6 +288,7 @@ Per ogni riga: nome del lavoro, esecutore (`claude` o `codex`), modello (con l'e
      "sveglia": true,
      "stalloMinuti": 30,
      "attesaMinuti": 45,
+     "controlloMinuti": [15, 30, 60],
      "quickModello": "sonnet",
      "codexModello": "nome-del-modello"
    }

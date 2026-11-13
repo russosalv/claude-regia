@@ -70,8 +70,8 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
   if (nome === 'sveglia') {
     return [
       `Sorveglianza e sveglia: ${c.sveglia ? 'ACCESA' : 'SPENTA'}.`,
-      `Ogni minuto: un agente senza segni di vita da ${c.stalloMinuti} min e fermo (un Codex si ferma, un subagente Claude si segnala alla principale). Se la principale e ferma e il piano in scaletta ha voci aperte senza nessuno al lavoro, la regia la sveglia per andare avanti; senza progressi le sveglie si diradano e dopo 5 smettono.`,
-      'Si cambia con /regia sveglia on|off; la soglia con "stalloMinuti" in ~/.claude/regia/config.json.',
+      `Ogni minuto: un agente senza segni di vita da ${c.stalloMinuti} min e fermo (un Codex si ferma, un subagente Claude si segnala alla principale). Se la principale e ferma e il piano in scaletta ha voci aperte, la regia la sveglia solo quando nessuno lavora (senza progressi le sveglie si diradano e dopo 5 smettono) o quando c'e una novita per lei (un compito finito o fallito, posta non letta): una sveglia sola, corta. Con gli agenti al lavoro e nulla di nuovo, un controllo dopo ${c.controlloMinuti.join(', ')} min (l'ultimo resta fisso).`,
+      'Si cambia con /regia sveglia on|off; le soglie con "stalloMinuti" e "controlloMinuti" in ~/.claude/regia/config.json.',
     ].join('\n')
   }
 

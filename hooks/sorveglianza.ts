@@ -4,28 +4,38 @@
 //   uccide (lo sciame lo rilancia un gradino sopra), un subagente Claude, che una
 //   mod non puo fermare, si segnala alla principale perche usi TaskStop;
 // - la principale ferma con voci del piano ancora aperte e nessun agente che
-//   lavora (o qualcosa appena finito) viene svegliata con un turno che le dice
-//   di andare avanti. Senza progressi le sveglie si diradano e poi smettono.
+//   lavora viene svegliata con un turno che le dice di andare avanti (senza
+//   progressi le sveglie si diradano e poi smettono). Se gli agenti lavorano
+//   la regia tace, a meno di novita per la principale (un compito finito o
+//   fallito, posta non letta: una sola sveglia per tutte) e di un controllo
+//   di paracadute ad attesa crescente, che riparte da capo quando lei fa un
+//   turno per altri motivi.
 
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { RegiaRiga, RegiaSnapshot } from '../types/index'
 import { intestazioneLog } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
+import { CONTROLLO_PREDEFINITO_MIN } from './registro'
 import { messaggioErrore } from './parsers'
+import { PRINCIPALE } from './posta'
 import { leggiProfilo, notifica } from './profilo'
 
 const GIRO_MS = 60_000
 export const ATTESA_MS = 3 * 60_000
 const ATTESA_MASSIMA_MS = 60 * 60_000
 export const MASSIMO_SVEGLIE = 5
-const MASSIMO_VOCI_NEL_TESTO = 10
+const MASSIMO_FINITI_NEL_TESTO = 8
 
 /** La principale: se ha un turno in corso e quando ha finito l'ultimo. */
-export type StatoPrincipale = { isOccupata: boolean; fineMs: number; motivo?: string }
+export type StatoPrincipale = { isOccupata: boolean; fineMs: number; motivo?: string; /** Il turno e quello che ha chiesto la regia. */ isDaSveglia?: boolean }
 
-/** Memoria delle sveglie: l'impronta del piano all'ultima, quante senza progressi. */
-export type Sveglie = { impronta: string; tentativi: number; ultimaMs: number; isEsaurita: boolean }
+/**
+ * Memoria delle sveglie: l'impronta del piano all'ultima, quante senza progressi
+ * (nessuno al lavoro) e quanti controlli di paracadute di fila (agenti al lavoro).
+ */
+export type Sveglie = { impronta: string; tentativi: number; ultimaMs: number; isEsaurita: boolean; controlli: number }
+
 
 const isAgente = (r: RegiaRiga) => r.fonte === 'claude' || r.fonte === 'codex'
 
@@ -50,7 +60,9 @@ export function impronta(s: RegiaSnapshot): string {
 
 /**
  * Se svegliare la principale ora, e la memoria aggiornata. Puro.
- * L'attesa raddoppia a ogni sveglia senza progressi (3, 6, 12... fino a 60 min).
+ * Nessuno al lavoro: l'attesa raddoppia a ogni sveglia senza progressi (3, 6, 12... fino a 60 min).
+ * Agenti al lavoro: si sveglia solo per le novita (dopo l'attesa breve, cosi si raggruppano) o,
+ * senza novita, per un controllo a distanza crescente (`controlloMinuti`).
  */
 export function decidiSveglia(o: {
   oraMs: number
@@ -59,36 +71,54 @@ export function decidiSveglia(o: {
   agentiInCorso: number
   impronta: string
   sveglie: Sveglie
+  /** Compiti finiti o falliti e posta non letta, che la principale non ha ancora visto. */
+  novita?: number
   /** La principale ha chiuso un turno dal giro prima: cio che e cambiato l'ha gia visto. */
   isTurnoNuovo?: boolean
+  controlloMinuti?: readonly number[]
 }): { isDovuta: boolean; sveglie: Sveglie } {
   const isProgresso = o.impronta !== o.sveglie.impronta
-  const base: Sveglie = isProgresso ? { impronta: o.impronta, tentativi: 0, ultimaMs: o.sveglie.ultimaMs, isEsaurita: false } : o.sveglie
+  // Un turno chiesto dalla regia non azzera il paracadute: altrimenti non crescerebbe mai.
+  const isAltroTurno = o.isTurnoNuovo === true && o.principale.isDaSveglia !== true
+  const base: Sveglie = {
+    ...o.sveglie,
+    ...(isProgresso ? { impronta: o.impronta, tentativi: 0, isEsaurita: false } : {}),
+    ...(isAltroTurno ? { controlli: 0 } : {}),
+  }
   const no = { isDovuta: false, sveglie: base }
   // Esc della persona: la principale resta ferma finche non scrive lei.
-  if (o.principale.isOccupata || o.principale.motivo === 'aborted' || o.aperte === 0 || base.isEsaurita) return no
-  // Qualcuno lavora e nulla e finito che la principale non abbia visto: si aspetta (lo stallo lo guarda a parte).
-  if (o.agentiInCorso > 0 && (!isProgresso || o.isTurnoNuovo === true)) return no
+  if (o.principale.isOccupata || o.principale.motivo === 'aborted' || o.aperte === 0) return no
+  const fermaDaMs = o.oraMs - Math.max(o.principale.fineMs, base.ultimaMs)
+  if (o.agentiInCorso > 0) {
+    const isNovita = (o.novita ?? 0) > 0
+    const controlli = o.controlloMinuti ?? CONTROLLO_PREDEFINITO_MIN
+    const attesa = isNovita ? ATTESA_MS : (controlli[Math.min(base.controlli, controlli.length - 1)] ?? 60) * 60_000
+    if (fermaDaMs < attesa) return no
+
+    return { isDovuta: true, sveglie: { ...base, controlli: isNovita ? 0 : base.controlli + 1, ultimaMs: o.oraMs } }
+  }
+  if (base.isEsaurita) return no
   const attesa = Math.min(ATTESA_MS * 2 ** base.tentativi, ATTESA_MASSIMA_MS)
-  if (o.oraMs - Math.max(o.principale.fineMs, base.ultimaMs) < attesa) return no
+  if (fermaDaMs < attesa) return no
   if (base.tentativi >= MASSIMO_SVEGLIE) return { isDovuta: false, sveglie: { ...base, isEsaurita: true } }
 
   return { isDovuta: true, sveglie: { ...base, tentativi: base.tentativi + 1, ultimaMs: o.oraMs } }
 }
 
-export function testoSveglia(o: { aperte: readonly RegiaRiga[]; agentiInCorso: number; minuti: number; motivo?: string; domande?: number }): string {
-  const voci = o.aperte.slice(0, MASSIMO_VOCI_NEL_TESTO).map(r => `- ${r.nome} (${r.stato})`)
-  const altre = o.aperte.length - voci.length
+/** Corto: solo cio che e cambiato e i conteggi; l'elenco delle voci la principale lo legge dagli strumenti. */
+export function testoSveglia(o: { aperte: number; agentiInCorso: number; minuti: number; motivo?: string; domande?: number; finiti?: readonly string[]; posta?: number }): string {
+  const finiti = (o.finiti ?? []).slice(0, MASSIMO_FINITI_NEL_TESTO)
+  const altri = (o.finiti ?? []).length - finiti.length
+  const posta = o.posta ?? 0
+  const domande = o.domande ?? 0
 
   return [
-    `[regia · sveglia] La sessione e ferma da ${o.minuti} min e il piano ha ${o.aperte.length} voci aperte:`,
-    ...voci,
-    ...(altre > 0 ? [`- e altre ${altre}`] : []),
-    o.agentiInCorso === 0 ? 'Nessun agente sta lavorando.' : `Agenti ancora in corso: ${o.agentiInCorso}; qualcosa e finito da quando la sessione si e fermata.`,
-    ...((o.domande ?? 0) > 0 ? [`Ci sono ${o.domande} domande aperte per la persona (le vede nel pane): non ripeterle, vai avanti con cio che non dipende da esse.`] : []),
+    `[regia · sveglia] Ferma da ${o.minuti} min. Voci aperte: ${o.aperte}. Agenti in corso: ${o.agentiInCorso}.`,
+    ...(finiti.length > 0 ? [`Da quando hai guardato: ${finiti.join(', ')}${altri > 0 ? ` e altri ${altri}` : ''}.`] : []),
+    ...(posta > 0 ? [`Posta non letta: ${posta} (posta_leggi).`] : []),
+    ...(domande > 0 ? [`Domande aperte per la persona: ${domande}, non ripeterle.`] : []),
     ...(o.motivo === 'error' ? ['Il tuo ultimo turno si e chiuso per un errore dell\'API: riprendi da dove eri.'] : []),
-    'Vai avanti da sola col piano: controlla gli esiti, lancia le prossime voci (insieme quelle indipendenti) e aggiorna la scaletta con scaletta_scrivi.',
-    'Non chiedere alla persona il permesso di proseguire. Una voce che non puoi fare segnala `bloccato` con il motivo e passa alla successiva; fermati solo se manca una decisione che spetta a lei, e scrivilo. Se il piano e finito, segna le voci `fatto`.',
+    'Vai avanti da sola col piano (scaletta_scrivi lo aggiorna, sciame_stato dice gli esiti) senza chiedere il permesso; segna `bloccato` con il motivo cio che non puoi fare.',
   ].join('\n')
 }
 
@@ -96,7 +126,7 @@ export function testoSveglia(o: { aperte: readonly RegiaRiga[]; agentiInCorso: n
 
 // Vive col modulo: dopo un ricaricamento la principale si considera ferma da adesso.
 const principale: StatoPrincipale = { isOccupata: false, fineMs: 0 }
-let sveglie: Sveglie = { impronta: '', tentativi: 0, ultimaMs: 0, isEsaurita: false }
+let sveglie: Sveglie = { impronta: '', tentativi: 0, ultimaMs: 0, isEsaurita: false, controlli: 0 }
 /** agentId → ultimo segno di vita (un passo o la prima volta che lo si vede). */
 const ultimoPasso = new Map<string, number>()
 /** Stalli gia segnalati, per non ripeterli. */
@@ -109,9 +139,17 @@ let isInGiro = false
 let fineVista = 0
 /** Voci aperte del piano al giro prima, per accorgersi che e finito. */
 let aperteViste = 0
+/** I lavori finiti che la principale ha gia visto (o fatto lei); `undefined` prima del primo giro. */
+let finitiVisti: Set<string> | undefined
+/** Finiti dopo l'ultima volta che la principale ha guardato, in attesa di una sveglia che li dica. */
+let finitiNuovi: string[] = []
+/** La regia ha chiesto un turno e la principale non l'ha ancora iniziato. */
+let isSvegliaInAttesa = false
 
 export function notaInizioPrincipale(): void {
   principale.isOccupata = true
+  principale.isDaSveglia = isSvegliaInAttesa
+  isSvegliaInAttesa = false
 }
 
 export function notaFinePrincipale(oraMs: number, motivo: string): void {
@@ -189,10 +227,31 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
 async function sveglia($: EngineInterface, testo: string): Promise<void> {
   // Una sveglia alla volta: la prossima solo dopo che la principale ha girato.
   principale.isOccupata = true
+  isSvegliaInAttesa = true
   await $.prompt.submit({ text: testo }).catch(errore => {
     principale.isOccupata = false
+    isSvegliaInAttesa = false
     $.ui.toast(`regia: sveglia non riuscita (${messaggioErrore(errore)})`)
   })
+}
+
+/** Lavori finiti da quando la principale ha guardato; cio che vede (o fa) lei non e una novita. */
+function aggiornaFiniti(fatti: readonly RegiaRiga[], isVisto: boolean): void {
+  if (finitiVisti === undefined || isVisto) {
+    finitiVisti = new Set(fatti.map(r => r.chiave))
+    finitiNuovi = []
+
+    return
+  }
+  for (const r of fatti.filter(f => !finitiVisti?.has(f.chiave))) {
+    finitiVisti.add(r.chiave)
+    finitiNuovi.push(`${r.nome} (${r.stato})`)
+  }
+}
+
+/** Messaggi alla principale arrivati dopo il suo ultimo turno e non letti. */
+export function postaNonLetta(s: RegiaSnapshot, dopoMs: number): number {
+  return s.posta.sessione.filter(m => m.a.toLowerCase() === PRINCIPALE && (m.stato === 'nuovo' || m.stato === 'consegnato') && m.ora > dopoMs).length
 }
 
 /** Un giro: stalli, poi la sveglia. Solo con una superficie e la sveglia accesa. */
@@ -217,7 +276,12 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     aperteViste = aperte.length
     const isTurnoNuovo = principale.fineMs !== fineVista
     fineVista = principale.fineMs
-    const decisa = decidiSveglia({ oraMs, principale, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo })
+    aggiornaFiniti(s.viste.sessione.fatti.filter(isAgente), principale.isOccupata || isTurnoNuovo)
+    const posta = postaNonLetta(s, principale.fineMs)
+    const decisa = decidiSveglia({
+      oraMs, principale, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo,
+      novita: finitiNuovi.length + posta, controlloMinuti: config.controlloMinuti,
+    })
     if (decisa.sveglie.isEsaurita && !sveglie.isEsaurita) {
       $.ui.toast(`regia: ${MASSIMO_SVEGLIE} sveglie senza progressi, il piano e fermo: serve te`, { timeoutMs: 30_000 })
       void notifica($, `Il piano e fermo: ${MASSIMO_SVEGLIE} sveglie senza progressi, serve te.`, 'piano')
@@ -230,9 +294,10 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     const minuti = Math.round((oraMs - principale.fineMs) / 60_000)
     const parti = [
       ...(daDire.length > 0 ? ['[regia · sorveglianza] Agenti fermi:', ...daDire] : []),
-      ...(decisa.isDovuta ? [testoSveglia({ aperte, agentiInCorso: inCorso.length, minuti, motivo: principale.motivo, domande: s.domande.length })] : []),
+      ...(decisa.isDovuta ? [testoSveglia({ aperte: aperte.length, agentiInCorso: inCorso.length, minuti, motivo: principale.motivo, domande: s.domande.length, finiti: finitiNuovi, posta })] : []),
     ]
     daDire = []
+    if (decisa.isDovuta) finitiNuovi = []
     await sveglia($, parti.join('\n'))
   } catch (errore) {
     $.ui.toast(`regia: sorveglianza: ${messaggioErrore(errore)}`)

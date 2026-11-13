@@ -2,11 +2,12 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { ATTESA_MS, MASSIMO_SVEGLIE, decidiSveglia, testoSveglia } from '../hooks/sorveglianza'
+import { ATTESA_MS, MASSIMO_SVEGLIE, decidiSveglia, postaNonLetta, testoSveglia } from '../hooks/sorveglianza'
 import type { Sveglie } from '../hooks/sorveglianza'
 
+const MIN = 60_000
 const ferma = { isOccupata: false, fineMs: 0 }
-const nuove: Sveglie = { impronta: 'a', tentativi: 0, ultimaMs: 0, isEsaurita: false }
+const nuove: Sveglie = { impronta: 'a', tentativi: 0, ultimaMs: 0, isEsaurita: false, controlli: 0 }
 const base = { oraMs: ATTESA_MS, principale: ferma, aperte: 3, agentiInCorso: 0, impronta: 'a', sveglie: nuove }
 
 test('sveglia la principale ferma col piano aperto e nessuno al lavoro, dopo l\'attesa', () => {
@@ -18,11 +19,47 @@ test('sveglia la principale ferma col piano aperto e nessuno al lavoro, dopo l\'
   expect(decidiSveglia({ ...base, principale: { ...ferma, motivo: 'aborted' } }).isDovuta).toBe(false)
 })
 
-test('con agenti al lavoro aspetta, a meno che qualcosa sia appena finito', () => {
-  expect(decidiSveglia({ ...base, agentiInCorso: 2 }).isDovuta).toBe(false)
-  expect(decidiSveglia({ ...base, agentiInCorso: 2, impronta: 'b' }).isDovuta).toBe(true)
-  // Il cambio l'ha fatto (o visto) la principale nel suo turno: niente sveglia.
-  expect(decidiSveglia({ ...base, agentiInCorso: 2, impronta: 'b', isTurnoNuovo: true }).isDovuta).toBe(false)
+const lavorano = { ...base, agentiInCorso: 15 }
+
+test('con agenti al lavoro e nessuna novita non sveglia, nemmeno se il piano cambia', () => {
+  expect(decidiSveglia({ ...lavorano, oraMs: 14 * MIN }).isDovuta).toBe(false)
+  // Una voce che cambia stato non e una novita per la principale: l'ha scritta lei.
+  expect(decidiSveglia({ ...lavorano, oraMs: 14 * MIN, impronta: 'b' }).isDovuta).toBe(false)
+  expect(decidiSveglia({ ...lavorano, oraMs: 14 * MIN, novita: 0 }).sveglie.controlli).toBe(0)
+})
+
+test('con agenti al lavoro e novita: una sveglia sola dopo l\'attesa breve, poi di nuovo silenzio', () => {
+  expect(decidiSveglia({ ...lavorano, oraMs: ATTESA_MS - 1, novita: 3 }).isDovuta).toBe(false)
+  const d = decidiSveglia({ ...lavorano, oraMs: ATTESA_MS, novita: 3 })
+  expect(d.isDovuta).toBe(true)
+  // La principale gira il turno e il chiamante azzera le novita: fino al controllo non si sveglia piu.
+  const dopo = { ...lavorano, sveglie: d.sveglie, principale: { ...ferma, fineMs: ATTESA_MS + MIN, isDaSveglia: true }, novita: 0 }
+  expect(decidiSveglia({ ...dopo, oraMs: ATTESA_MS + 14 * MIN, isTurnoNuovo: true }).isDovuta).toBe(false)
+  expect(decidiSveglia({ ...dopo, oraMs: ATTESA_MS + 16 * MIN, isTurnoNuovo: true }).isDovuta).toBe(true)
+})
+
+test('il controllo di paracadute ha attesa crescente, fissa all\'ultimo valore, e si azzera con un altro turno', () => {
+  let s = nuove
+  let fineMs = 0
+  for (const attesa of [15, 30, 60, 60, 60]) {
+    expect(decidiSveglia({ ...lavorano, principale: { ...ferma, fineMs }, oraMs: fineMs + (attesa - 1) * MIN, sveglie: s }).isDovuta).toBe(false)
+    const d = decidiSveglia({ ...lavorano, principale: { ...ferma, fineMs }, oraMs: fineMs + attesa * MIN, sveglie: s })
+    expect(d.isDovuta).toBe(true)
+    s = d.sveglie
+    // Il turno che la sveglia stessa provoca non azzera la scala.
+    fineMs += attesa * MIN + MIN
+    expect(decidiSveglia({ ...lavorano, principale: { ...ferma, fineMs, isDaSveglia: true }, oraMs: fineMs, sveglie: s, isTurnoNuovo: true }).sveglie.controlli).toBe(s.controlli)
+  }
+  // Un turno per altri motivi (la persona scrive, un agente risponde) riparte da 15.
+  expect(decidiSveglia({ ...lavorano, principale: { ...ferma, fineMs }, oraMs: fineMs, sveglie: s, isTurnoNuovo: true }).sveglie.controlli).toBe(0)
+  // I valori sono configurabili.
+  expect(decidiSveglia({ ...lavorano, oraMs: 5 * MIN, controlloMinuti: [5, 10] }).isDovuta).toBe(true)
+})
+
+test('i conteggi della posta non letta: solo alla principale, arrivata dopo il suo ultimo turno', () => {
+  const m = (a: string, ora: number, stato: 'nuovo' | 'consegnato' | 'letto') => ({ id: `${a}${ora}${stato}`, da: 'x', a, testo: 't', ora, stato })
+  const s = { posta: { sessione: [m('principale', 10, 'consegnato'), m('principale', 20, 'consegnato'), m('principale', 30, 'letto'), m('x', 40, 'nuovo'), m('principale', 50, 'nuovo')], tutti: [] } }
+  expect(postaNonLetta(s as never, 15)).toBe(2)
 })
 
 test('senza progressi le sveglie si diradano e poi smettono; un progresso le riapre', () => {
@@ -41,12 +78,15 @@ test('senza progressi le sveglie si diradano e poi smettono; un progresso le ria
   expect(decidiSveglia({ ...base, oraMs: ora + 10 * 60 * 60_000, sveglie: esaurita.sveglie, impronta: 'b' }).isDovuta).toBe(true)
 })
 
-test('il testo dice di andare avanti e ricorda l\'errore dell\'API', () => {
-  const riga = { chiave: 'registro:x', nome: 'x', fonte: 'registro' as const, esecutore: '', stato: 'scaletta' as const }
-  const t = testoSveglia({ aperte: [riga], agentiInCorso: 0, minuti: 4, motivo: 'error' })
-  expect(t).toContain('- x (scaletta)')
+test('il testo e corto: cio che e cambiato, i conteggi, una riga di istruzioni, senza l\'elenco delle voci', () => {
+  const t = testoSveglia({ aperte: 12, agentiInCorso: 15, minuti: 4, motivo: 'error', domande: 1, finiti: ['alfa (fatto)', 'beta (fallito)'], posta: 2 })
+  expect(t).toContain('Voci aperte: 12. Agenti in corso: 15.')
+  expect(t).toContain('alfa (fatto), beta (fallito)')
+  expect(t).toContain('Posta non letta: 2')
   expect(t).toContain('errore dell\'API')
-  expect(t).toContain('Non chiedere alla persona il permesso')
+  expect(t.split('\n').length).toBe(6)
+  expect(testoSveglia({ aperte: 1, agentiInCorso: 0, minuti: 3 }).split('\n').length).toBe(2)
+  expect(testoSveglia({ aperte: 1, agentiInCorso: 0, minuti: 3, finiti: Array.from({ length: 12 }, (_, i) => `c${i}`) })).toContain('e altri 4')
 })
 
 // ── la mod intera: stalli e sveglia, a orologio finto ──
@@ -55,7 +95,6 @@ import { mock } from 'claude-code/testing'
 
 import { AGENTE_VIVO, GREP, HOME, LOG, REGISTRO, SESSIONE } from './fixture'
 
-const MIN = 60_000
 const LOG_ALFA = `${HOME}/.claude/regia/codex/lavoro-alfa/lavoro-alfa.log`
 const ROLLOUT = `${HOME}/.codex/sessions/2026/11/10/rollout-x-abc-123.jsonl`
 const PS_ALFA = '  PID ELAPSED COMMAND\n 1234 59:00 codex exec -C /p -o lavoro-alfa.esito.md -\n'
@@ -144,14 +183,21 @@ test('la sorveglianza: un Codex vivo non si tocca, uno fermo si ferma, la princi
   f.bozza = ''
   await clock.advance(MIN)
   expect(f.sveglie.length).toBe(2)
-  expect(f.sveglie[1]).toContain('Sviluppo 04')
-  expect(f.sveglie[1]).toContain('Non chiedere alla persona il permesso')
+  expect(f.sveglie[1]).toContain('Voci aperte: 1. Agenti in corso: 0.')
+  expect(f.sveglie[1]).toContain('senza chiedere il permesso')
   await turnoPrincipale()
 
   // Un subagente che non fa passi per oltre 30 min si segnala, con TaskStop.
+  // Per i primi 14 minuti la regia tace; poi un solo controllo di paracadute (15 min), corto.
   f.agenti = [AGENTE_VIVO]
-  for (let i = 0; i < 29; i++) await clock.advance(MIN)
+  const prima = f.sveglie.length
+  for (let i = 0; i < 14; i++) await clock.advance(MIN)
+  expect(f.sveglie.length).toBe(prima)
+  for (let i = 0; i < 15; i++) await clock.advance(MIN)
+  expect(f.sveglie.length).toBe(prima + 1)
+  expect(f.sveglie[prima]).toContain('Agenti in corso: 1.')
   expect(f.sveglie.filter(t => t.includes('TaskStop'))).toEqual([])
+  await turnoPrincipale()
   for (let i = 0; i < 3; i++) await clock.advance(MIN)
   const segnalazione = f.sveglie.find(t => t.includes('TaskStop'))
   expect(segnalazione).toContain('(id a-vivo): nessun passo da')
