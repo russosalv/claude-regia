@@ -4,6 +4,8 @@
 
 It works on its own on any machine and any project, with no other plugin and nothing to add to your `CLAUDE.md`.
 
+Regia is also the orchestration layer of [NONoise](https://github.com/russosalv/NONoise), the AI SDLC bootstrapper: `create-nonoise` installs it for Claude Code, and the two share the same three modes. See [With NONoise](#with-nonoise).
+
 ## Why
 
 Left alone, a Claude Code session tends to:
@@ -86,13 +88,17 @@ The model switch in quick is a `/model` that the mod issues as soon as the comma
 
 ### With NONoise
 
-[NONoise](https://github.com/russosalv/NONoise) projects use the same three modes, written in the project's `.nonoise/sdlc-flow.md`: each SDLC phase lists the modes it belongs to. Regia needs nothing installed for this and NONoise does not need Regia. When the file is there, the rule of the current mode tells the main session to follow it:
+[NONoise](https://github.com/russosalv/NONoise) scaffolds a project with skills, a docs hierarchy, a context file for each AI tool and an advisor, Polly, that reads the project's SDLC flow in `.nonoise/sdlc-flow.md`. Regia is its orchestration layer for Claude Code: `create-nonoise` installs the plugin `regia@claude-regia` in the project (and declares it in `.claude/settings.json` when it works offline), and from version 1.9 NONoise no longer ships its own delegation skills (`swarm-router`, `copilot-delegate`, `gemini-delegate`, `codex-delegate`): what they did is done here.
+
+The two share the same three modes. In the flow file each SDLC phase lists the modes it belongs to, and when the file is there the rule of the current mode tells the main session to follow it:
 
 - **long**: the phases the file assigns to `long` go into the plan in that order, each with its `fase`, and each runs the skill the file names;
 - **medium**: short spec, plan, development, verification, with no requirements or architecture phases;
 - **quick**: no phases and no documents.
 
-In every mode the formal FPF validation (`arch-decision`) is proposed only for a decision that is costly to reverse and has more than one viable option, or when you ask for it. NONoise's advisor works the other way round too: `/polly long <goal>` hands back a prompt that starts with `/regia long`, so the mode is chosen once.
+In every mode the formal FPF validation (`arch-decision`) is proposed only for a decision that is costly to reverse and has more than one viable option, or when you ask for it. Polly works the other way round too: `/polly long <goal>` hands back a prompt that starts with `/regia long`, so the mode is chosen once.
+
+Regia stays independent: it needs nothing from NONoise and works the same in a project that has never seen it. NONoise's other tools (Codex, Copilot, Cursor, Gemini CLI) do not run Regia; they read the same mode table from their context file.
 
 ## Questions for you
 
