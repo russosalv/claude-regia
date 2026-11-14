@@ -196,13 +196,19 @@ test('turn.complete somma i token di ogni subagente', async ($, on) => {
   expect(memoria.agenti.a1?.token).toEqual({ input: 200, output: 100, cacheLettura: 2000, cacheScrittura: 20 })
 })
 
-test('/regia modelli|orchestra|risparmio: argomenti e config', () => {
+test('/regia models|orchestra|savings: argomenti e config', () => {
   expect(leggiArgomentiOpzione('modelli')).toEqual({ nome: 'modelli' })
   expect(leggiArgomentiOpzione('modelli off')).toEqual({ nome: 'modelli', valore: false })
-  expect(leggiArgomentiOpzione('orchestra guida')).toEqual({ nome: 'orchestra', valore: 'guida' })
+  expect(leggiArgomentiOpzione('models off')).toEqual({ nome: 'modelli', valore: false })
+  expect(leggiArgomentiOpzione('savings')).toEqual({ nome: 'risparmio' })
+  expect(leggiArgomentiOpzione('orchestra guide')).toEqual({ nome: 'orchestra', valore: 'guide' })
+  // I nomi italiani restano validi.
+  expect(leggiArgomentiOpzione('orchestra guida')).toEqual({ nome: 'orchestra', valore: 'guide' })
   expect(leggiArgomentiOpzione('orchestra boh')).toEqual({ nome: 'orchestra', isValoreSbagliato: true })
   expect(leggiArgomentiOpzione('tutti')).toBeUndefined()
   const config = parseConfig({ instradamento: false, modelli: { Explore: 'sonnet', rotto: 3 }, codexModello: 'gpt-5.5' }, HOME)
+  expect(parseConfig({ orchestra: 'guide' }, HOME).config.orchestra).toBe('guida')
+  expect(parseConfig({ orchestra: 'stretta' }, HOME).config.orchestra).toBe('stretta')
   expect(config.config).toMatchObject({ instradamento: false, modelli: { Explore: 'sonnet' }, codexModello: 'gpt-5.5' })
   expect(config.avvisi).toHaveLength(1)
 })

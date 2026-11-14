@@ -25,7 +25,7 @@ export type VoceRegistro = {
 export type ConfigRegia = {
   codexLogs: string[]
   aggiornamentoSecondi: number
-  /** Modello e sforzo decisi compito per compito (`/regia modelli on|off`). */
+  /** Modello e sforzo decisi compito per compito (`/regia models on|off`). */
   instradamento: boolean
   /** Tipo di agente → modello fisso; senza voce decide il compito. */
   modelli: Readonly<Record<string, string>>
@@ -33,13 +33,16 @@ export type ConfigRegia = {
   codexModello?: string
   /** Quanto la conversazione principale e tenuta a delegare (`/regia orchestra`). */
   orchestra: ModoOrchestra
-  /** Regole di sobrieta nei prompt dei delegati (`/regia risparmio on|off`). */
+  /** Regole di sobrieta nei prompt dei delegati (`/regia savings on|off`). */
   risparmio: boolean
   /** La mod installa Ponytail quando e nuova o aggiornata (`/regia ponytail on|off`). */
   ponytail: boolean
+  /** La mod installa i plugin di Codex e di Qwen per Claude Code, se la CLI c'e (`/regia codex|qwen on|off`). */
+  pluginCodex: boolean
+  pluginQwen: boolean
   /** Compiti di uno sciame che girano insieme, se la chiamata non lo dice. */
   sciameParallelo: number
-  /** La sorveglianza: agenti fermi e sveglia della principale col piano aperto (`/regia sveglia on|off`). */
+  /** La sorveglianza: agenti fermi e sveglia della principale col piano aperto (`/regia wake on|off`). */
   sveglia: boolean
   /** Minuti senza segni di vita dopo cui un agente in corso e considerato fermo. */
   stalloMinuti: number
@@ -194,12 +197,14 @@ function campoControllo(grezzo: unknown): Campo<number[]> {
 
   return { valore: [...CONTROLLO_PREDEFINITO_MIN], avvisi: ['config.json: "controlloMinuti" deve essere una lista di 1-8 numeri da 5 a 1440'] }
 }
+/** Il nome con cui comandi e config chiamano un modo. I nomi italiani restano validi. */
+export const NOME_MODO: Readonly<Record<ModoOrchestra, string>> = { stretta: 'strict', guida: 'guide', off: 'off' }
 
 function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
-  const modo = MODI_ORCHESTRA.find(m => m === grezzo)
+  const modo = MODI_ORCHESTRA.find(m => m === grezzo || NOME_MODO[m] === grezzo)
   if (modo !== undefined) return { valore: modo, avvisi: [] }
 
-  return { valore: 'guida', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${MODI_ORCHESTRA.join(', ')}`] }
+  return { valore: 'guida', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${Object.values(NOME_MODO).join(', ')}`] }
 }
 
 function campoParallelo(grezzo: unknown): Campo<number> {
@@ -236,6 +241,8 @@ export function parseConfig(
     orchestra: 'guida',
     risparmio: true,
     ponytail: true,
+    pluginCodex: true,
+    pluginQwen: true,
     sciameParallelo: SCIAME_PARALLELO_PREDEFINITO,
     sveglia: true,
     stalloMinuti: STALLO_PREDEFINITO_MIN,
@@ -255,6 +262,8 @@ export function parseConfig(
   const orchestra = campoOrchestra(o.orchestra)
   const risparmio = campoBooleano(o.risparmio, 'risparmio', true)
   const ponytail = campoBooleano(o.ponytail, 'ponytail', true)
+  const pluginCodex = campoBooleano(o.pluginCodex, 'pluginCodex', true)
+  const pluginQwen = campoBooleano(o.pluginQwen, 'pluginQwen', true)
   const parallelo = campoParallelo(o.sciameParallelo)
   const sveglia = campoBooleano(o.sveglia, 'sveglia', true)
   const stallo = campoStallo(o.stalloMinuti)
@@ -269,6 +278,8 @@ export function parseConfig(
     orchestra: orchestra.valore,
     risparmio: risparmio.valore,
     ponytail: ponytail.valore,
+    pluginCodex: pluginCodex.valore,
+    pluginQwen: pluginQwen.valore,
     sciameParallelo: parallelo.valore,
     sveglia: sveglia.valore,
     stalloMinuti: stallo.valore,
@@ -277,7 +288,7 @@ export function parseConfig(
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

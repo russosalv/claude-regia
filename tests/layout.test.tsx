@@ -157,7 +157,7 @@ test('senza lavori il pane mostra un riquadro attenuato con il suggerimento', as
   const righe = resa(await ui.drawn(), 40)
 
   expect(righe.some(r => r.includes('Nessun agente al lavoro in questa'))).toBe(true)
-  expect(righe.some(r => r.includes('/regia tutti per vedere la macchina'))).toBe(true)
+  expect(righe.some(r => r.includes('/regia all per vedere la macchina'))).toBe(true)
   expect(righe.some(r => r.startsWith('── IN CORSO'))).toBe(false)
   for (const riga of righe) expect(cellWidth(riga)).toBeLessThanOrEqual(40)
   await ui.unmount()

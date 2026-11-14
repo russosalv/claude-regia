@@ -4,9 +4,10 @@ import type { EngineInterface } from 'claude-code'
 
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
-import { PROFILO_PREDEFINITO, leggiProfilo } from './profilo'
+import { NOME_PROFILO, PROFILO_PREDEFINITO, leggiProfilo } from './profilo'
 import type { StatoProfilo } from './profilo'
 import { messaggioErrore } from './parsers'
+import { NOME_MODO } from './registro'
 import type { ConfigRegia, ModoOrchestra } from './registro'
 import { contaSciamiAttivi } from './sciame-motore'
 
@@ -40,12 +41,12 @@ const SPIEGA_MODO: Readonly<Record<ModoOrchestra, string>> = {
 export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio' | 'sveglia'>, p: Pick<StatoProfilo, 'profilo' | 'isVia'>): string {
   const accesa = (v: boolean) => (v ? 'on' : 'off')
 
-  return `Modalita ${p.profilo}${p.isVia ? ' (sei via)' : ''} · orchestra ${c.orchestra} · modelli ${accesa(c.instradamento)} · risparmio ${accesa(c.risparmio)} · sveglia ${accesa(c.sveglia)} — /regia doctor per i dettagli`
+  return `Mode ${NOME_PROFILO[p.profilo]}${p.isVia ? ' (away)' : ''} · orchestra ${NOME_MODO[c.orchestra]} · models ${accesa(c.instradamento)} · savings ${accesa(c.risparmio)} · wake ${accesa(c.sveglia)} — /regia doctor per i dettagli`
 }
 
 function rigaOrchestra(d: DatiDoctor): string {
   const { orchestra } = d.config
-  const base = `Orchestra: ${orchestra.toUpperCase()} — ${SPIEGA_MODO[orchestra]}.`
+  const base = `Orchestra: ${NOME_MODO[orchestra].toUpperCase()} — ${SPIEGA_MODO[orchestra]}.`
   if (orchestra === 'off') return base
   if (!d.haSuperficie) return `${base} NON si applica qui: sessione senza superficie (claude -p o SDK).`
   if (!d.haAgent) return `${base} NON si applica qui: il tool Agent non e disponibile.`
@@ -60,7 +61,7 @@ export function testoDoctor(d: DatiDoctor): string {
   return [
     `Regia ${d.versione ?? '(versione illeggibile)'} — ${d.radice}`,
     '',
-    `Modalita: ${(d.profilo ?? PROFILO_PREDEFINITO).profilo.toUpperCase()}${d.profilo?.isVia === true ? ', sei via: notifiche accese' : ''} (/regia long|medio|quick, /regia via|qui).`,
+    `Modalita: ${NOME_PROFILO[(d.profilo ?? PROFILO_PREDEFINITO).profilo].toUpperCase()}${d.profilo?.isVia === true ? ', sei via: notifiche accese' : ''} (/regia long|medium|quick, /regia away|here).`,
     rigaOrchestra(d),
     `Modello e sforzo per compito: ${c.instradamento ? 'ACCESI — li sceglie haiku guardando il compito' : 'SPENTI — decide il motore'}${Object.keys(c.modelli).length > 0 ? `; fissati in config: ${Object.keys(c.modelli).join(', ')}` : ''}.`,
     `Risparmio: ${c.risparmio ? 'ACCESO' : 'SPENTO'} — ${d.isPonytail ? 'Ponytail attivo' : 'Ponytail non attivo'}${c.risparmio ? (d.isPonytail ? ', la mod aggiunge il rapporto breve' : ', la mod aggiunge sobrieta e rapporto breve (/regia ponytail on per installarlo)') : ''}.`,
@@ -71,7 +72,7 @@ export function testoDoctor(d: DatiDoctor): string {
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
     '',
-    'Si cambia con /regia long|medio|quick, /regia orchestra stretta|guida|off, /regia modelli on|off, /regia risparmio on|off.',
+    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia models on|off, /regia savings on|off, /regia wake on|off.',
   ].join('\n')
 }
 

@@ -1,4 +1,4 @@
-// `/regia modelli|orchestra|risparmio|sveglia [valore]`: mostra un'opzione e la cambia,
+// `/regia models|orchestra|savings|wake [valore]`: mostra un'opzione e la cambia,
 // scrivendola nella config. Vale subito: la config si rilegge a ogni uso.
 
 import type { EngineInterface } from 'claude-code'
@@ -6,7 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
 import { messaggioErrore } from './parsers'
-import { MODI_ORCHESTRA } from './registro'
+import { MODI_ORCHESTRA, NOME_MODO } from './registro'
 import type { ConfigRegia } from './registro'
 
 type Opzione = { chiave: 'instradamento' | 'orchestra' | 'risparmio' | 'sveglia'; valori: Readonly<Record<string, boolean | string>> }
@@ -15,16 +15,20 @@ const INTERRUTTORE = { on: true, off: false }
 
 const OPZIONI: Readonly<Record<string, Opzione>> = {
   modelli: { chiave: 'instradamento', valori: INTERRUTTORE },
-  orchestra: { chiave: 'orchestra', valori: Object.fromEntries(MODI_ORCHESTRA.map(m => [m, m])) },
+  orchestra: { chiave: 'orchestra', valori: Object.fromEntries(MODI_ORCHESTRA.flatMap(m => [[NOME_MODO[m], NOME_MODO[m]], [m, NOME_MODO[m]]])) },
   risparmio: { chiave: 'risparmio', valori: INTERRUTTORE },
   sveglia: { chiave: 'sveglia', valori: INTERRUTTORE },
 }
 
+/** I nomi inglesi dei comandi; quelli italiani restano validi. */
+const INGLESI: Readonly<Record<string, string>> = { models: 'modelli', savings: 'risparmio', wake: 'sveglia' }
+
 export type ArgomentiOpzione = { nome: string; valore?: boolean | string; isValoreSbagliato?: boolean }
 
-/** `orchestra`, `orchestra guida`...; `undefined` se la prima parola non e un'opzione. */
+/** `orchestra`, `orchestra guide`...; `undefined` se la prima parola non e un'opzione. */
 export function leggiArgomentiOpzione(args: string): ArgomentiOpzione | undefined {
-  const [nome, valore, ...resto] = args.trim().toLowerCase().split(/\s+/)
+  const [parola, valore, ...resto] = args.trim().toLowerCase().split(/\s+/)
+  const nome = parola === undefined ? undefined : INGLESI[parola] ?? parola
   const opzione = nome === undefined ? undefined : OPZIONI[nome]
   if (nome === undefined || opzione === undefined) return undefined
   if (valore === undefined) return { nome }
@@ -56,14 +60,14 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
       `Modello e sforzo decisi per compito: ${c.instradamento ? 'ACCESO' : 'SPENTO'}.`,
       'A ogni chiamata ad Agent haiku guarda il compito e sceglie; cio che la chiamata o la definizione dell\'agente dicono resta. Mai i fork.',
       ...fissi,
-      'Si cambia con /regia modelli on|off; un tipo si fissa in ~/.claude/regia/config.json, "modelli": { "tipo": "modello" }.',
+      'Si cambia con /regia models on|off; un tipo si fissa in ~/.claude/regia/config.json, "modelli": { "tipo": "modello" }.',
     ].join('\n')
   }
   if (nome === 'orchestra') {
     return [
-      `La principale: ${c.orchestra.toUpperCase()}.`,
-      'La regola dipende dalla modalita (/regia long|medio|quick). guida: la regola nel prompt. stretta: in piu, in long le scritture della principale sui file del progetto vengono rifiutate. off: nessuna regola.',
-      'Si cambia con /regia orchestra stretta|guida|off.',
+      `La principale: ${NOME_MODO[c.orchestra].toUpperCase()}.`,
+      'La regola dipende dalla modalita (/regia long|medium|quick). guide: la regola nel prompt. strict: in piu, in long le scritture della principale sui file del progetto vengono rifiutate. off: nessuna regola.',
+      'Si cambia con /regia orchestra strict|guide|off.',
     ].join('\n')
   }
 
@@ -71,7 +75,7 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
     return [
       `Sorveglianza e sveglia: ${c.sveglia ? 'ACCESA' : 'SPENTA'}.`,
       `Ogni minuto: un agente senza segni di vita da ${c.stalloMinuti} min e fermo (un Codex si ferma, un subagente Claude si segnala alla principale). Se la principale e ferma e il piano in scaletta ha voci aperte, la regia la sveglia solo quando nessuno lavora (senza progressi le sveglie si diradano e dopo 5 smettono) o quando c'e una novita per lei (un compito finito o fallito, posta non letta): una sveglia sola, corta. Con gli agenti al lavoro e nulla di nuovo, un controllo dopo ${c.controlloMinuti.join(', ')} min (l'ultimo resta fisso).`,
-      'Si cambia con /regia sveglia on|off; le soglie con "stalloMinuti" e "controlloMinuti" in ~/.claude/regia/config.json.',
+      'Si cambia con /regia wake on|off; le soglie con "stalloMinuti" e "controlloMinuti" in ~/.claude/regia/config.json.',
     ].join('\n')
   }
 
@@ -80,7 +84,7 @@ function descrivi(nome: string, c: ConfigRegia, isPonytail: boolean): string {
     isPonytail
       ? 'Ponytail e attivo e porta la sua regola ai subagenti: la mod aggiunge solo il rapporto finale breve.'
       : 'Ponytail non e attivo: la mod aggiunge una regola di sobrieta sua e il rapporto finale breve. Per installarlo: /regia ponytail on.',
-    'Si cambia con /regia risparmio on|off.',
+    'Si cambia con /regia savings on|off.',
   ].join('\n')
 }
 
@@ -91,7 +95,7 @@ export async function comandoOpzione($: EngineInterface, a: ArgomentiOpzione): P
     if (home === undefined) return 'regia: HOME non definita, non trovo la config.'
     const opzione = OPZIONI[a.nome]
     if (opzione === undefined) return `regia: opzione sconosciuta: ${a.nome}`
-    if (a.isValoreSbagliato === true) return `regia: valori di ${a.nome}: ${Object.keys(opzione.valori).join(', ')}.`
+    if (a.isValoreSbagliato === true) return `regia: valori di ${a.nome}: ${[...new Set(Object.values(opzione.valori))].map(v => (typeof v === 'boolean' ? (v ? 'on' : 'off') : v)).join(', ')}.`
     if (a.valore !== undefined) await scriviChiave($, home, opzione.chiave, a.valore)
     const { dati, avvisi } = await leggiConfig($, home)
 

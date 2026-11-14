@@ -282,8 +282,8 @@ test('/regia orchestra off spegne la regola e toglie i rifiuti, /regia orchestra
   expect(await sezioni()).toEqual(['intro'])
   expect((await scrittura($)).deny).toBeUndefined()
 
-  await comando('orchestra stretta')
-  expect(config().orchestra).toBe('stretta')
+  await comando('orchestra strict')
+  expect(config().orchestra).toBe('strict')
   await comando('long')
   expect((await scrittura($)).deny).toBe(RIFIUTO_SCRITTURA)
 })
@@ -296,15 +296,15 @@ test('/regia doctor dice che cosa e attivo e perche non si applica', () => {
 
   const testo = testoDoctor(dati)
   expect(testo).toContain('Regia 1.2.3')
-  expect(testo).toContain('Orchestra: GUIDA')
-  expect(testo).toContain('Modalita: MEDIO')
+  expect(testo).toContain('Orchestra: GUIDE')
+  expect(testo).toContain('Modalita: MEDIUM')
   expect(testo).toContain('Attiva in questa sessione')
   expect(testo).toContain('Ponytail non attivo')
   expect(testo).toContain('nessun file, valori predefiniti')
   expect(testoDoctor({ ...dati, haSuperficie: false })).toContain('NON si applica qui: sessione senza superficie')
   expect(testoDoctor({ ...dati, codex: undefined, repo: undefined })).toContain('Codex: NON trovato')
   expect(testoDoctor({ ...dati, config: parseConfig({ orchestra: 'off' }, HOME).config })).not.toContain('Attiva in questa')
-  expect(rigaModi(dati.config, { profilo: 'long', isVia: true })).toBe('Modalita long (sei via) · orchestra guida · modelli on · risparmio on · sveglia on — /regia doctor per i dettagli')
+  expect(rigaModi(dati.config, { profilo: 'long', isVia: true })).toBe('Mode long (away) · orchestra guide · models on · savings on · wake on — /regia doctor per i dettagli')
 })
 
 test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', async ($, on) => {
@@ -313,8 +313,8 @@ test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', asyn
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const comando = (args: string) => $.command.run({ command: 'regia', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 } })
 
-  expect((await comando('doctor')).text).toContain('Orchestra: GUIDA')
-  expect((await comando('')).text).toContain('Modalita medio · orchestra guida · modelli on · risparmio on')
+  expect((await comando('doctor')).text).toContain('Orchestra: GUIDE')
+  expect((await comando('')).text).toContain('Mode medium · orchestra guide · models on · savings on')
 })
 
 test('lo stato di Ponytail e gli argomenti del comando', () => {
@@ -322,12 +322,19 @@ test('lo stato di Ponytail e gli argomenti del comando', () => {
   expect(statoDaImpostazioni({ 'ponytail@ponytail': true })).toBe('attivo')
   expect(statoDaImpostazioni({ 'ponytail@ponytail': false })).toBe('spento')
   expect(statoDaImpostazioni({ 'altro@x': true })).toBe('manca')
-  expect(leggiArgomentiPonytail('ponytail off')).toEqual({ valore: false })
+  expect(statoDaImpostazioni({ 'codex@openai-codex': true }, 'codex')).toBe('attivo')
+  expect(leggiArgomentiPonytail('ponytail off')).toEqual({ nome: 'ponytail', valore: false })
+  expect(leggiArgomentiPonytail('qwen')).toEqual({ nome: 'qwen' })
+  expect(leggiArgomentiPonytail('codex on')).toEqual({ nome: 'codex', valore: true })
   expect(leggiArgomentiPonytail('ponytail boh')).toBeUndefined()
   expect(leggiArgomentiPonytail('tutti')).toBeUndefined()
 })
 
-const INSTALLA = ['plugin marketplace add DietrichGebert/ponytail', 'plugin install ponytail@ponytail']
+const INSTALLA = [
+  'plugin marketplace add DietrichGebert/ponytail', 'plugin install ponytail@ponytail',
+  'plugin marketplace add openai/codex-plugin-cc', 'plugin install codex@openai-codex',
+  'plugin marketplace add josephyaduvanshi/qwen-companion', 'plugin install qwen@qwen-companion',
+]
 
 function conImpostazioni(on: On, attivi: Record<string, boolean>, config?: unknown) {
   const amb = ambiente(on, { config })
@@ -374,7 +381,7 @@ test('senza persona davanti non installa nulla', async ($, on) => {
 })
 
 test('disabilitato a mano non si tocca, e la versione si segna lo stesso', async ($, on) => {
-  const { amb, lanci } = conImpostazioni(on, { 'ponytail@ponytail': false })
+  const { amb, lanci } = conImpostazioni(on, { 'ponytail@ponytail': false, 'codex@openai-codex': true, 'qwen@altro': false })
   await avvio($, amb)
 
   expect(lanci()).toEqual([])
@@ -382,8 +389,8 @@ test('disabilitato a mano non si tocca, e la versione si segna lo stesso', async
 })
 
 test('con ponytail spento in config non installa', async ($, on) => {
-  const { amb, lanci } = conImpostazioni(on, {}, { ponytail: false })
+  const { amb, lanci } = conImpostazioni(on, {}, { ponytail: false, pluginQwen: false })
   await avvio($, amb)
 
-  expect(lanci()).toEqual([])
+  expect(lanci()).toEqual(INSTALLA.slice(2, 4))
 })

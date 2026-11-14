@@ -395,7 +395,7 @@ export function riepilogoTestuale(snapshot: RegiaSnapshot, vista: RegiaVista): s
     `${c.scaletta} in scaletta, ${dati.fatti.length + dati.fattiExtra} fatti.`
   const righe = dati.inCorso.slice(0, 6).map(rigaRiepilogo)
   const avvisi = snapshot.avvisi.map(a => `Attenzione: ${a}`)
-  const cambio = vista === 'tutti' ? '/regia per tornare a questa sessione' : '/regia tutti per vedere tutta la macchina'
+  const cambio = vista === 'tutti' ? '/regia per tornare a questa sessione' : '/regia all per vedere tutta la macchina'
 
   return [intestazione, ...righe, ...avvisi, cambio].join('\n')
 }

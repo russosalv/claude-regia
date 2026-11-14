@@ -199,8 +199,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'regia',
-      description: 'Apre il pane Regia agenti e riassume lavori in corso, scaletta e fatti',
-      argumentHint: '[long|medio|quick [obiettivo] | via | qui | tutti | doctor | sciame | sveglia [on|off] | modelli [on|off] | orchestra [stretta|guida|off] | risparmio [on|off] | ponytail [on|off]]',
+      description: 'Open the Regia pane and summarize running, queued and finished agents',
+      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | ponytail|codex|qwen [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -389,13 +389,14 @@ export const register: Register = on => {
     if (ponytail !== undefined) return { text: await comandoPonytail($, ponytail) }
     const opzione = leggiArgomentiOpzione(e.args)
     if (opzione !== undefined) return { text: await comandoOpzione($, opzione) }
-    if (e.args.trim().toLowerCase() === 'sciame') {
+    const parola = e.args.trim().toLowerCase()
+    if (parola === 'swarm' || parola === 'sciame') {
       await giro($)
       const stato = await sciameStato($, {})
 
       return { text: 'deny' in stato ? stato.deny : stato.result }
     }
-    const scelta = e.args.trim().toLowerCase() === 'tutti' ? 'tutti' : 'sessione'
+    const scelta = parola === 'all' || parola === 'tutti' ? 'tutti' : 'sessione'
     await update($, vista, () => scelta)
     await update($, dettaglio, () => NESSUN_DETTAGLIO)
     // /regia riporta anche alla conversazione principale (se si guardava un

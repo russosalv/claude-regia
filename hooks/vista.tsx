@@ -140,7 +140,7 @@ function statoVuoto(ui: Tavola, vista: RegiaVista, spazio: number) {
   const { Box, Text } = ui
   const interno = spazio - CELLE_RIQUADRO
   const righe = vista === 'sessione'
-    ? ['Nessun agente al lavoro in questa sessione', '/regia tutti per vedere la macchina']
+    ? ['Nessun agente al lavoro in questa sessione', '/regia all per vedere la macchina']
     : ['Nessun agente al lavoro sulla macchina', 'né lavori in scaletta o conclusi']
 
   return (

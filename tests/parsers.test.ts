@@ -155,6 +155,8 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     orchestra: 'guida',
     risparmio: true,
     ponytail: true,
+    pluginCodex: true,
+    pluginQwen: true,
     sciameParallelo: 4,
     sveglia: true,
     stalloMinuti: 30,

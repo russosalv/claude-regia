@@ -22,6 +22,8 @@ const INPUT_PROMPT = { model: 'm', promptModel: 'm', outputStyle: null, surfaces
 test('il comando dice la modalita, con l\'obiettivo; il resto non e una modalita', () => {
   expect(leggiArgomentiProfilo('long porta avanti i 20 sviluppi')).toEqual({ nome: 'long', obiettivo: 'porta avanti i 20 sviluppi' })
   expect(leggiArgomentiProfilo(' QUICK ')).toEqual({ nome: 'quick', obiettivo: '' })
+  expect(leggiArgomentiProfilo('away')).toEqual({ nome: 'via', obiettivo: '' })
+  expect(leggiArgomentiProfilo('medium fai X')).toEqual({ nome: 'medio', obiettivo: 'fai X' })
   expect(leggiArgomentiProfilo('via')).toEqual({ nome: 'via', obiettivo: '' })
   expect(leggiArgomentiProfilo('tutti')).toBeUndefined()
   expect(leggiArgomentiProfilo('longevo')).toBeUndefined()
@@ -74,7 +76,7 @@ test('un testo lungo va a capo a parole entro la larghezza', () => {
   expect(righe.at(-1)).toBe('fine')
 })
 
-test('/regia quick passa a sonnet e /regia medio rimette il modello di prima; la regola segue la modalita', async ($, on) => {
+test('/regia quick passa a sonnet e /regia medium rimette il modello di prima; la regola segue la modalita', async ($, on) => {
   const amb = ambiente(on)
   const modelli: string[] = []
   const inviati: string[] = []
@@ -102,13 +104,13 @@ test('/regia quick passa a sonnet e /regia medio rimette il modello di prima; la
   expect(await regola()).toBe(TESTI_ORCHESTRA.quick)
   expect(amb.store.get(`regia.profilo.${SESSIONE}`)).toMatchObject({ profilo: 'quick', modelloPrima: 'opus' })
 
-  expect((await comando($, 'medio')).text).toContain('La principale torna a opus')
+  expect((await comando($, 'medium')).text).toContain('La principale torna a opus')
   await amb.clock?.advance(10)
   expect(modelli).toEqual(['sonnet', 'opus'])
   expect(await regola()).toBe(TESTI_ORCHESTRA.medio)
   await comando($, 'long')
   expect(await regola()).toBe(TESTI_ORCHESTRA.long)
-  expect((await comando($, '')).text).toContain('Modalita long ·')
+  expect((await comando($, '')).text).toContain('Mode long ·')
 })
 
 test('una domanda: notifica solo se la persona e via, nel pane col contesto, risposta con un tasto', async ($, on) => {
@@ -135,10 +137,10 @@ test('una domanda: notifica solo se la persona e via, nel pane col contesto, ris
 
   expect((await domanda('uno')).result).toContain('registrata')
   expect(notifiche).toEqual([])
-  await comando($, 'via')
+  await comando($, 'away')
   await domanda('due')
   expect(notifiche).toEqual(['Domanda per te: Quale database per due?'])
-  await comando($, 'qui')
+  await comando($, 'here')
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await amb.clock?.advance(1000)

@@ -77,7 +77,7 @@ test('il pane mostra la sessione, commuta su tutti col tasto e torna con /regia'
   }
 
   const tutti = await $.command.run({
-    command: 'regia', args: 'tutti', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 },
+    command: 'regia', args: 'all', origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 },
   })
   expect(tutti.text).toContain('Regia (tutta la macchina): 2 in corso (2 codex, 0 claude')
   expect(tutti.text).not.toContain('da fare)')

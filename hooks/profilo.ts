@@ -1,5 +1,5 @@
-// Le modalita di lavoro della sessione (`/regia long|medio|quick`) e la
-// presenza della persona (`/regia via|qui`, o un telefono collegato), che
+// Le modalita di lavoro della sessione (`/regia long|medium|quick`) e la
+// presenza della persona (`/regia away|here`, o un telefono collegato), che
 // decide se le notifiche partono. Vivono in `$.store` per sessione: valgono
 // anche dopo un ricaricamento o una ripresa della sessione.
 
@@ -10,10 +10,13 @@ import { messaggioErrore } from './parsers'
 
 export const PROFILI = ['long', 'medio', 'quick'] as const
 export type Profilo = (typeof PROFILI)[number]
+/** Il nome con cui i comandi chiamano una modalita. I nomi italiani restano validi. */
+export const NOME_PROFILO: Readonly<Record<Profilo, string>> = { long: 'long', medio: 'medium', quick: 'quick' }
+const INGLESI: Readonly<Record<string, string>> = { medium: 'medio', away: 'via', here: 'qui' }
 
 export type StatoProfilo = {
   profilo: Profilo
-  /** La persona ha detto di non essere al PC (`/regia via`). */
+  /** La persona ha detto di non essere al PC (`/regia away`). */
   isVia: boolean
   /** Il modello della principale prima di `quick`, da rimettere all'uscita. */
   modelloPrima?: string
@@ -71,14 +74,15 @@ export type ArgomentiProfilo = { nome: Profilo | 'via' | 'qui'; obiettivo: strin
 export function leggiArgomentiProfilo(args: string): ArgomentiProfilo | undefined {
   const testo = args.trim()
   const [prima = ''] = testo.split(/\s+/)
-  const nome = [...PROFILI, 'via', 'qui'].find(n => n === prima.toLowerCase()) as ArgomentiProfilo['nome'] | undefined
+  const parola = prima.toLowerCase()
+  const nome = [...PROFILI, 'via', 'qui'].find(n => n === (INGLESI[parola] ?? parola)) as ArgomentiProfilo['nome'] | undefined
 
   return nome === undefined ? undefined : { nome, obiettivo: testo.slice(prima.length).trim() }
 }
 
 const SPIEGA: Readonly<Record<Profilo, string>> = {
   long: 'LONG, sviluppi lunghi: la principale orchestra e fa le tue veci. Piano in scaletta con la descrizione di ogni attivita, agenti in parallelo, sorveglianza degli agenti fermi e sveglia della principale finche il piano e aperto; le domande per te nel pane, con notifica quando sei via.',
-  medio: 'MEDIO: la principale lavora lei e delega solo i pezzi indipendenti o le ricerche ampie. Sorveglianza degli agenti fermi, niente sveglia.',
+  medio: 'MEDIUM: la principale lavora lei e delega solo i pezzi indipendenti o le ricerche ampie. Sorveglianza degli agenti fermi, niente sveglia.',
   quick: 'QUICK: un solo agente, niente subagenti ne sorveglianza',
 }
 
@@ -91,7 +95,7 @@ async function cambiaModello($: EngineInterface, modello: string): Promise<void>
   }
 }
 
-/** Il testo di risposta di `/regia long|medio|quick|via|qui`. Non lancia. */
+/** Il testo di risposta di `/regia long|medium|quick|away|here`. Non lancia. */
 export async function comandoProfilo($: EngineInterface, a: ArgomentiProfilo): Promise<string> {
   try {
     const prima = await leggiProfilo($)
@@ -99,7 +103,7 @@ export async function comandoProfilo($: EngineInterface, a: ArgomentiProfilo): P
       await scriviProfilo($, { ...prima, isVia: a.nome === 'via' })
 
       return a.nome === 'via'
-        ? 'Sei via: le domande per te, il piano finito e il piano fermo ti arrivano come notifica. /regia qui quando torni.'
+        ? 'Sei via: le domande per te, il piano finito e il piano fermo ti arrivano come notifica. /regia here quando torni.'
         : 'Sei qui: niente notifiche (salvo con la sessione aperta anche sul telefono).'
     }
     const righe: string[] = []

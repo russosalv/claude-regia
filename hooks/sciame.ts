@@ -207,7 +207,7 @@ function rigaCompito(c: Compito, massimo: number): string {
   return `${SEGNI[c.stato]} ${c.nome} (${dati}${attesa})${esito}${file}`
 }
 
-/** La lavagna per il modello o per `/regia sciame`: poche righe. */
+/** La lavagna per il modello o per `/regia swarm`: poche righe. */
 export function descrivi(s: Sciame, massimo = 160): string {
   const conta = (st: StatoCompito) => s.compiti.filter(c => c.stato === st).length
 

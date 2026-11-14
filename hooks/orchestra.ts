@@ -1,5 +1,5 @@
 // Come lavora la conversazione principale, secondo la modalita della sessione
-// (`/regia long|medio|quick`). La regola viaggia con la mod (e non con la
+// (`/regia long|medium|quick`). La regola viaggia con la mod (e non con la
 // memoria di un progetto o di un PC): una sezione del prompt di sistema e, in
 // long con `orchestra stretta`, il rifiuto delle modifiche ai file del progetto.
 // Vale solo nelle sessioni con una superficie: `claude -p` e gli SDK fanno da se.
@@ -58,7 +58,7 @@ export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
     '# Regia: modalita QUICK',
     SE_SUBAGENTE,
     '',
-    'Lavora da sola, senza subagenti ne Codex, salvo che la persona li chieda: risposte e modifiche rapide e dirette. Se il compito si rivela grande, dillo e proponi `/regia medio` o `/regia long`.',
+    'Lavora da sola, senza subagenti ne Codex, salvo che la persona li chieda: risposte e modifiche rapide e dirette. Se il compito si rivela grande, dillo e proponi `/regia medium` o `/regia long`.',
     '',
     ...REGOLA_DOMANDE,
   ].join('\n'),
@@ -80,7 +80,7 @@ export function isDelProgetto(file: string, radice: string): boolean {
 }
 
 export const RIFIUTO_SCRITTURA =
-  'regia: sei l\'orchestratore, le modifiche ai file del progetto le fa un delegato: lancia un Agent con questo compito (senza model ne effort, li sceglie la mod). Se la persona vuole che lo faccia tu, chiedile di passare a /regia orchestra guida.'
+  'regia: sei l\'orchestratore, le modifiche ai file del progetto le fa un delegato: lancia un Agent con questo compito (senza model ne effort, li sceglie la mod). Se la persona vuole che lo faccia tu, chiedile di passare a /regia orchestra guide.'
 
 async function modoCorrente($: EngineInterface): Promise<ModoOrchestra> {
   const home = await leggiHome($)
