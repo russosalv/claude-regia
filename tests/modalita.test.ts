@@ -200,3 +200,14 @@ test('il piano nel pane: aperte per fase, fatte chiuse in un gruppo, la descrizi
   expect(dettaglio.join(' ')).toContain('Tabelle e API dello storico letture.')
   await ui.unmount()
 })
+
+test('con NONoise ogni modalita rimanda alle fasi di .nonoise/sdlc-flow.md e limita la validazione FPF', () => {
+  for (const [profilo, modalita] of [['long', '`long`'], ['medio', '`medium`'], ['quick', '`quick`']] as const) {
+    const riga = TESTI_ORCHESTRA[profilo].split('\n').find(r => r.includes('.nonoise/sdlc-flow.md'))
+    expect(riga).toContain(modalita)
+    expect(riga).toContain('FPF')
+  }
+  // In long le fasi vanno in scaletta; in quick non ce ne sono.
+  expect(TESTI_ORCHESTRA.long).toContain('mettile in scaletta')
+  expect(TESTI_ORCHESTRA.quick).toContain('nessuna fase')
+})

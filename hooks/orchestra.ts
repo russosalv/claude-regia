@@ -24,6 +24,15 @@ const REGOLA_DOMANDE = [
 
 const REGOLA_DOMANDE_TOOL = '- Ogni decisione che spetta alla persona registrala anche con `mcp__regia__domanda_scrivi` (contesto completo, opzioni, raccomandazione): la vede nel pane e, se non e al PC, le arriva una notifica. Quando risponde in chat chiudila con stato `risolta`. Mentre aspetti, porta avanti cio che non dipende dalla risposta.'
 
+// NONoise (https://github.com/russosalv/NONoise) ha le stesse tre modalita, scritte
+// nel progetto in `.nonoise/sdlc-flow.md`. La regola resta statica: e il modello
+// a guardare se il file c'e, cosi la sezione non cambia da un progetto all'altro.
+const SE_NONOISE: Readonly<Record<Profilo, string>> = {
+  long: '- Se il progetto ha `.nonoise/sdlc-flow.md` (NONoise), le fasi del lavoro sono quelle che il file assegna a `long`: mettile in scaletta in quell\'ordine, con `fase`, e usa la skill che ogni fase indica. La validazione FPF (`arch-decision`) proponila solo se la decisione e costosa da invertire e ha piu opzioni valide, o se la persona la chiede; altrimenti la scelta si registra nel PRD come decisione lightweight.',
+  medio: '- Se il progetto ha `.nonoise/sdlc-flow.md` (NONoise), vale la sua modalita `medium`: spec breve, piano, sviluppo, verifica. Niente fasi di requisiti o architettura, e niente validazione FPF salvo una decisione costosa da invertire con piu opzioni valide.',
+  quick: 'Se il progetto ha `.nonoise/sdlc-flow.md` (NONoise), vale la sua modalita `quick`: nessuna fase, nessun documento, nessuna validazione FPF.',
+}
+
 /** Statici per modalita: cosi restano in cache da un giro all'altro. */
 export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
   long: [
@@ -39,6 +48,7 @@ export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
     '- Compiti lunghi e autonomi fuori dalla sessione: `mcp__regia__codex_avvia` (o `mcp__regia__qwen_avvia` per Qwen Code).',
     '- Il piano: prima di partire scrivi ogni voce con `mcp__regia__scaletta_scrivi`, con `descrizione` (la macro-attivita spiegata alla persona: che cosa, perche, che cosa ne esce) e `fase`. La persona la legge nel pane come tasklist. Tienila aggiornata (`in_corso`, `fatto`, `bloccato` con il motivo). Porta avanti il piano fino in fondo senza chiedere il permesso a ogni voce: finche restano voci aperte e nessuno lavora, la regia ti risveglia.',
     '- Controlla gli agenti: uno che non da segni di vita o gira a vuoto fermalo (TaskStop) e rilancia il compito, piu chiaro o un gradino sopra.',
+    SE_NONOISE.long,
     '',
     ...REGOLA_DOMANDE,
     REGOLA_DOMANDE_TOOL,
@@ -50,6 +60,7 @@ export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
     'Lavori tu sul compito. Delega solo cio che conviene: pezzi indipendenti da fare in parallelo (piu chiamate ad Agent nello stesso messaggio, `isolation: "worktree"` per chi scrive) e ricerche ampie (agente Explore). Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod.',
     '- Se il lavoro ha piu passi, scrivili con `mcp__regia__scaletta_scrivi` (con `descrizione`): la persona li vede nel pane come tasklist.',
     '- Se il lavoro si rivela lungo (molti sviluppi, ore di lavoro), proponi alla persona `/regia long`.',
+    SE_NONOISE.medio,
     '',
     ...REGOLA_DOMANDE,
     REGOLA_DOMANDE_TOOL,
@@ -59,6 +70,7 @@ export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
     SE_SUBAGENTE,
     '',
     'Lavora da sola, senza subagenti ne Codex, salvo che la persona li chieda: risposte e modifiche rapide e dirette. Se il compito si rivela grande, dillo e proponi `/regia medium` o `/regia long`.',
+    SE_NONOISE.quick,
     '',
     ...REGOLA_DOMANDE,
   ].join('\n'),

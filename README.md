@@ -84,6 +84,16 @@ In every mode the rule asks that each question stand on its own: never "for ques
 
 The model switch in quick is a `/model` that the mod issues as soon as the command ends; if the engine does not accept it, a toast tells you to type it by hand.
 
+### With NONoise
+
+[NONoise](https://github.com/russosalv/NONoise) projects use the same three modes, written in the project's `.nonoise/sdlc-flow.md`: each SDLC phase lists the modes it belongs to. Regia needs nothing installed for this and NONoise does not need Regia. When the file is there, the rule of the current mode tells the main session to follow it:
+
+- **long**: the phases the file assigns to `long` go into the plan in that order, each with its `fase`, and each runs the skill the file names;
+- **medium**: short spec, plan, development, verification, with no requirements or architecture phases;
+- **quick**: no phases and no documents.
+
+In every mode the formal FPF validation (`arch-decision`) is proposed only for a decision that is costly to reverse and has more than one viable option, or when you ask for it. NONoise's advisor works the other way round too: `/polly long <goal>` hands back a prompt that starts with `/regia long`, so the mode is chosen once.
+
 ## Questions for you
 
 `domanda_scrivi` (id, titolo, contesto, opzioni, raccomandazione) records a decision that is yours, in `~/.claude/regia/domande.json`. In the pane, section **PER TE**, the `▸` key opens the question with its context and these keys:
