@@ -257,6 +257,20 @@ export const register: Register = on => {
     return esito
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'qwen_riprendi: errore interno della mod regia' }))
 
+  on('tool.call', { tool: 'mcp__regia__copilot_avvia' }, async ($, e) => {
+    const esito = await codexAvvia($, e, 'copilot')
+    void leggiOra($)
+
+    return esito
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'copilot_avvia: errore interno della mod regia' }))
+
+  on('tool.call', { tool: 'mcp__regia__copilot_riprendi' }, async ($, e) => {
+    const esito = await codexRiprendi($, e, 'copilot_riprendi')
+    void leggiOra($)
+
+    return esito
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'copilot_riprendi: errore interno della mod regia' }))
+
   on('tool.call', { tool: 'mcp__regia__posta_invia' }, async ($, e) => {
     const esito = await toolInvia($, e)
     void leggiOra($)

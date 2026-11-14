@@ -7,8 +7,10 @@ export const SFORZI = ['low', 'medium', 'high'] as const
 export type Sforzo = (typeof SFORZI)[number]
 
 /** Le CLI che la mod lancia in background: stesso modello di lavoro, cartella di lavoro diversa. */
-export type EsecutoreCli = 'codex' | 'qwen'
-export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen']
+export type EsecutoreCli = 'codex' | 'qwen' | 'copilot'
+export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen', 'copilot']
+/** Come la mod chiama ogni CLI nei suoi messaggi. */
+export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen', copilot: 'Copilot' }
 
 /** Argomenti del tool come li manda il modello, gia controllati. */
 export type RichiestaCodex = {
@@ -18,7 +20,7 @@ export type RichiestaCodex = {
   regole?: string
   sforzo?: Sforzo
   modello?: string
-  /** Solo Qwen: il lavoro cambia file (modalita `auto`) o legge soltanto (`default`). */
+  /** Solo Qwen e Copilot: il lavoro cambia file (permesso `auto`) o legge soltanto (`default`). */
   scrive?: boolean
 }
 
@@ -55,7 +57,23 @@ export const SCHEMA_QWEN_AVVIA = {
   },
 } as const
 
-/** Il permesso di `qwen`: la modalita meno permissiva che scrive file e lancia comandi (provato: accept_edits rifiuta git e python). */
+/** Copilot: stesso schema di Qwen (`sforzo` e `modello` valgono per `copilot`, `scrive` sceglie i flag di permesso). */
+export const SCHEMA_COPILOT_AVVIA = {
+  ...SCHEMA_QWEN_AVVIA,
+  properties: {
+    ...SCHEMA_QWEN_AVVIA.properties,
+    cartella: { type: 'string', description: 'Cartella in cui Copilot lavora: percorso assoluto (o con ~) di una cartella esistente.' },
+    prompt: { type: 'string', description: 'Il compito per Copilot, completo.' },
+    sforzo: { type: 'string', enum: [...SFORZI], description: 'Sforzo di ragionamento (--effort); se manca decide Copilot.' },
+    modello: { type: 'string', description: 'Modello Copilot (--model, per esempio claude-sonnet-4.6); se manca, quello della config della mod o di Copilot stesso.' },
+    scrive: { type: 'boolean', description: 'true (predefinito) se il lavoro cambia file o lancia comandi: --allow-all-tools --allow-all-paths. false: solo lettura, --deny-tool=write e nessun permesso in piu.' },
+  },
+} as const
+
+/**
+ * Il permesso di `qwen`: la modalita meno permissiva che scrive file e lancia comandi (provato: accept_edits rifiuta git e python).
+ * Copilot usa gli stessi due nomi: `copilot-esegui` li traduce nei suoi flag.
+ */
 export function permessoQwen(scrive: boolean | undefined): 'auto' | 'default' {
   return scrive === false ? 'default' : 'auto'
 }
@@ -188,7 +206,7 @@ export function percorsiLavoro(home: string, nome: string, esecutore: EsecutoreC
     pid: `${cartella}/${nome}.pid`,
     riprendi: `${cartella}/${nome}.riprendi.md`,
     sessione: `${cartella}/${nome}.sessione`,
-    /** Solo Qwen: cartella e permesso del lavoro, per riprenderlo. */
+    /** Solo Qwen e Copilot: cartella e permesso del lavoro, per riprenderlo. */
     cartellaLavoro: `${cartella}/${nome}.cartella`,
     permesso: `${cartella}/${nome}.permesso`,
     eseguiLog: `${radice}/esegui.log`,

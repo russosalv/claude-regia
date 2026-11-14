@@ -1,7 +1,7 @@
 {
   "name": "regia",
-  "version": "0.13.0",
-  "description": "Turn Claude Code into an orchestrator: the main session delegates, each task gets the model and effort it needs, swarms of Claude, Codex and Qwen agents run on a dependency board, all in a live pane.",
+  "version": "0.14.0",
+  "description": "Turn Claude Code into an orchestrator: the main session delegates, each task gets the model and effort it needs, swarms of Claude, Codex, Qwen and Copilot agents run on a dependency board, all in a live pane.",
   "license": "MIT",
   "types": "./types/index.d.ts",
   "author": {

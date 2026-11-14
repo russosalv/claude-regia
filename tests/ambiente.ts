@@ -66,7 +66,8 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   on('session.id', () => ({ value: SESSIONE }))
   on('session.cwd', () => ({ value: PROGETTO }))
   on('session.repo', () => ({ value: opzioni.senzaRepo === true ? null : { root: PROGETTO, name: 'progetto', remote: null, internal: false } }))
-  on('fs.stat', (_, e) => (e.path === WORKTREE || e.path === PROGETTO
+  // Anche i worktree che uno sciame crea (con un `git worktree add` finto) sono cartelle.
+  on('fs.stat', (_, e) => (e.path === PROGETTO || e.path.startsWith(`${PROGETTO}/.worktrees/`)
     ? { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }
     : { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }))
   on('fs.exists', (_, e) => ({

@@ -5,6 +5,7 @@ import type { EngineInterface } from 'claude-code'
 
 import {
   ESECUTORI_CLI,
+  NOME_CLI,
   argvLancio,
   componiPrompt,
   permessoQwen,
@@ -39,6 +40,17 @@ export const DESCRIZIONE_QWEN_AVVIA = [
   'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
 ].join(' ')
 
+export const NOME_TOOL_COPILOT_AVVIA = 'copilot_avvia'
+
+export const DESCRIZIONE_COPILOT_AVVIA = [
+  'Lancia un lavoro GitHub Copilot CLI (copilot, prompt da stdin) in background in una cartella, staccato dalla sessione: sopravvive se la sessione si chiude. Gemello di codex_avvia.',
+  'Scrive prompt, log ed esito in ~/.claude/regia/copilot/<nome>/ e registra inizio e fine in ~/.claude/regia/copilot/esegui.log; il pane Regia lo mostra come i Codex.',
+  'Con scrive=true (predefinito) Copilot puo cambiare file e lanciare comandi (--allow-all-tools --allow-all-paths); con scrive=false solo leggere (--deny-tool=write, nessun permesso in piu).',
+  'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
+].join(' ')
+
+const TOOL_AVVIA: Readonly<Record<EsecutoreCli, string>> = { codex: NOME_TOOL_AVVIA, qwen: NOME_TOOL_QWEN_AVVIA, copilot: NOME_TOOL_COPILOT_AVVIA }
+
 type Esito = { testo?: string; errore?: string }
 
 /** Lo script del plugin, copiato in `~/.claude/regia/bin/` se manca o e cambiato. */
@@ -54,7 +66,7 @@ export async function installaScript($: EngineInterface, home: string, nome: str
   return destinazione
 }
 
-/** Vero se un lavoro con quel nome e vivo (Codex o Qwen): il processo, o lo script che aspetta di riprovare. */
+/** Vero se un lavoro con quel nome e vivo (Codex, Qwen o Copilot): il processo, o lo script che aspetta di riprovare. */
 export async function isInCorso($: EngineInterface, home: string, nome: string): Promise<boolean> {
   const processi = await leggiProcessi($)
   if (processi.dati?.some(p => p.nome === nome) === true) return true
@@ -122,8 +134,8 @@ async function prepara($: EngineInterface, argomenti: unknown): Promise<Preparat
 }
 
 /**
- * Lancia lo script staccato; con `riprendi` (id della sessione Codex o Qwen) riprende invece di partire da capo.
- * `permesso` e solo di Qwen (`auto` o `default`); `sforzo` vuoto lascia decidere alla CLI.
+ * Lancia lo script staccato; con `riprendi` (id della sessione della CLI) riprende invece di partire da capo.
+ * `permesso` e solo di Qwen e Copilot (`auto` o `default`); `sforzo` vuoto lascia decidere alla CLI.
  */
 export async function lancia(
   $: EngineInterface,
@@ -136,7 +148,7 @@ export async function lancia(
   const sessione = await $.session.id()
   const argv = argvLancio(script, [
     l.nome, l.cartella, percorsi.cartella, l.modello ?? '', l.sforzo, percorsi.eseguiLog,
-    ...(esecutore === 'qwen' ? [l.permesso ?? 'auto'] : []),
+    ...(esecutore === 'codex' ? [] : [l.permesso ?? 'auto']),
   ])
   const env = { CLAUDE_CODE_SESSION_ID: sessione, ...(l.riprendi === undefined ? {} : { REGIA_RIPRENDI: l.riprendi }) }
   const r = await $.process.run(argv, { env, timeoutMs: 10_000 })
@@ -153,8 +165,8 @@ type Scelta = Omit<SceltaSforzo, 'sforzo'> & { sforzo: Sforzo | '' }
 function risposta(p: Preparato, pid: number, modello: string | undefined, s: Scelta, esecutore: EsecutoreCli): string {
   const percorsi = percorsiLavoro(p.home, p.richiesta.nome, esecutore)
   const corto = (x: string) => accorciaPercorso(x, p.home, 200)
-  const cli = esecutore === 'qwen' ? 'Qwen' : 'Codex'
-  const permesso = esecutore === 'qwen' ? `Permesso ${permessoQwen(p.richiesta.scrive)} (${p.richiesta.scrive === false ? 'solo lettura' : 'puo scrivere e lanciare comandi'}).` : undefined
+  const cli = NOME_CLI[esecutore]
+  const permesso = esecutore === 'codex' ? undefined : `Permesso ${permessoQwen(p.richiesta.scrive)} (${p.richiesta.scrive === false ? 'solo lettura' : 'puo scrivere e lanciare comandi'}).`
 
   return [
     `Lavoro ${cli} "${p.richiesta.nome}" avviato in background (pid ${pid}).`,
@@ -171,7 +183,7 @@ function risposta(p: Preparato, pid: number, modello: string | undefined, s: Sce
   ].join('\n')
 }
 
-/** Lo sforzo di Qwen: quello dato, o nessuno (decide Qwen): niente giudizio di haiku per un solo flag. */
+/** Lo sforzo di Qwen e di Copilot: quello dato, o nessuno (decide la CLI): niente giudizio di haiku per un solo flag. */
 function sforzoQwen(dato: Sforzo | undefined): Scelta {
   return dato === undefined
     ? { sforzo: '', motivo: 'non indicato', daChi: 'chiamata' }
@@ -180,26 +192,27 @@ function sforzoQwen(dato: Sforzo | undefined): Scelta {
 
 /**
  * Il corpo del tool: `{ result }` se e partito, `{ deny }` con il motivo se no.
- * `esecutore` sceglie la CLI: `codex_avvia` (predefinito) o `qwen_avvia`.
+ * `esecutore` sceglie la CLI: `codex_avvia` (predefinito), `qwen_avvia` o `copilot_avvia`.
  */
 export async function codexAvvia(
   $: EngineInterface,
   argomenti: unknown,
   esecutore: EsecutoreCli = 'codex',
 ): Promise<{ result: string } | { deny: string }> {
-  const tool = esecutore === 'qwen' ? NOME_TOOL_QWEN_AVVIA : NOME_TOOL_AVVIA
+  const tool = TOOL_AVVIA[esecutore]
   try {
     const p = await prepara($, argomenti)
     if (typeof p === 'string') return { deny: `${tool}: ${p}` }
     const config = (await leggiConfig($, p.home)).dati
-    const modello = p.richiesta.modello ?? (esecutore === 'codex' ? config.codexModello : undefined)
-    const sforzo: Scelta = esecutore === 'qwen' ? sforzoQwen(p.richiesta.sforzo) : await scegliSforzo($, p.richiesta.prompt, p.richiesta.sforzo)
+    const daConfig = esecutore === 'codex' ? config.codexModello : esecutore === 'copilot' ? config.copilotModello : undefined
+    const modello = p.richiesta.modello ?? daConfig
+    const sforzo: Scelta = esecutore === 'codex' ? await scegliSforzo($, p.richiesta.prompt, p.richiesta.sforzo) : sforzoQwen(p.richiesta.sforzo)
     const percorsi = percorsiLavoro(p.home, p.richiesta.nome, esecutore)
     const posta = paragrafoPosta(p.richiesta.nome, percorsiPosta(p.home).cli)
     await $.fs.write(percorsi.prompt, componiPrompt(p.richiesta.prompt, p.regole, [...(config.risparmio ? [`${REGOLA_SOBRIETA}\n${REGOLA_RAPPORTO}`] : []), posta]))
     const pid = await lancia($, {
       home: p.home, nome: p.richiesta.nome, cartella: p.cartella, modello, sforzo: sforzo.sforzo, esecutore,
-      ...(esecutore === 'qwen' ? { permesso: permessoQwen(p.richiesta.scrive) } : {}),
+      ...(esecutore === 'codex' ? {} : { permesso: permessoQwen(p.richiesta.scrive) }),
     })
     const inizioMs = await $.clock.now()
     const sessione = await $.session.id()

@@ -17,6 +17,8 @@ import type { Azione, Cella, Colonna, Pezzo, RigaTabella } from './tavola'
 export const COLORE_CODEX = 'permission'
 /** Qwen: un terzo colore del tema, distinto da Claude e Codex. */
 export const COLORE_QWEN = 'success'
+/** Copilot: un quarto colore del tema. */
+export const COLORE_COPILOT = 'suggestion'
 const CELLE_MOTO = 4
 const MIN_LAVORO = 14
 /** `▸ apri ✉ scrivi`, `▸ log ↻ riprendi`. */
@@ -51,6 +53,7 @@ function cellaEsecutore(riga: RegiaRiga): Cella {
   if (riga.esecutore.startsWith('claude')) return [{ testo: 'claude', colore: ACCENTO }]
   if (riga.esecutore === 'codex') return [{ testo: 'codex', colore: COLORE_CODEX }]
   if (riga.esecutore === 'qwen') return [{ testo: 'qwen', colore: COLORE_QWEN }]
+  if (riga.esecutore === 'copilot') return [{ testo: 'copilot', colore: COLORE_COPILOT }]
 
   return [{ testo: riga.esecutore, isAttenuato: true }]
 }

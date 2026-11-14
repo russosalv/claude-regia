@@ -5,7 +5,7 @@
 import type { EngineInterface } from 'claude-code'
 
 import { isInCorso, lancia } from './codex-avvia'
-import { ESECUTORI_CLI, SFORZI, componiPrompt, intestazioneLog, isNomeValido, percorsiLavoro } from './codex'
+import { ESECUTORI_CLI, NOME_CLI, SFORZI, componiPrompt, intestazioneLog, isNomeValido, percorsiLavoro } from './codex'
 import type { EsecutoreCli, Sforzo } from './codex'
 import { leggiConfig, leggiHome } from './fonti'
 import { conLancio, leggiMemoriaAgenti, modificaMemoria } from './memoria-agenti'
@@ -26,6 +26,13 @@ export const DESCRIZIONE_QWEN_RIPRENDI = [
   'Parte staccato come qwen_avvia, con lo stesso permesso del primo giro, e risponde subito. Rifiuta un lavoro ancora in corso.',
 ].join(' ')
 
+export const NOME_TOOL_COPILOT_RIPRENDI = 'copilot_riprendi'
+
+export const DESCRIZIONE_COPILOT_RIPRENDI = [
+  'Riprende un lavoro Copilot gia finito (copilot --resume=<id>) mandandogli un nuovo messaggio: Copilot continua la stessa sessione, con il suo contesto.',
+  'Parte staccato come copilot_avvia, con lo stesso permesso del primo giro, e risponde subito. Rifiuta un lavoro ancora in corso.',
+].join(' ')
+
 export const SCHEMA_RIPRENDI = {
   type: 'object',
   properties: {
@@ -36,7 +43,7 @@ export const SCHEMA_RIPRENDI = {
   additionalProperties: false,
 } as const
 
-/** Il log del lavoro e di quale CLI e: quello di codex_avvia o qwen_avvia, o quello accanto a uno dei log degli script. */
+/** Il log del lavoro e di quale CLI e: quello di codex_avvia, qwen_avvia o copilot_avvia, o quello accanto a uno dei log degli script. */
 async function trovaLog($: EngineInterface, home: string, nome: string): Promise<{ log: string; esecutore: EsecutoreCli } | undefined> {
   const { codexLogs } = (await leggiConfig($, home)).dati
   const candidati = [
@@ -56,24 +63,24 @@ async function leggiSeEsiste($: EngineInterface, percorso: string): Promise<stri
   return (await $.fs.exists(percorso)) ? (await $.fs.read(percorso)).trim() : undefined
 }
 
-/** Qwen non ha un'intestazione nel log: sessione, cartella e permesso li ha scritti lo script accanto al log. */
-async function datiRipresaQwen($: EngineInterface, home: string, nome: string): Promise<Ripresa | string> {
-  const p = percorsiLavoro(home, nome, 'qwen')
+/** Qwen e Copilot non hanno un'intestazione nel log: sessione, cartella e permesso li ha scritti lo script accanto al log. */
+async function datiRipresaQwen($: EngineInterface, home: string, nome: string, esecutore: 'qwen' | 'copilot'): Promise<Ripresa | string> {
+  const p = percorsiLavoro(home, nome, esecutore)
   const sessione = await leggiSeEsiste($, p.sessione)
-  if (sessione === undefined || !/^[0-9a-f-]{8,64}$/i.test(sessione)) return `non trovo l'id della sessione Qwen di "${nome}"`
+  if (sessione === undefined || !/^[0-9a-f-]{8,64}$/i.test(sessione)) return `non trovo l'id della sessione ${NOME_CLI[esecutore]} di "${nome}"`
   const cartella = await leggiSeEsiste($, p.cartellaLavoro)
   if (cartella === undefined || !(await $.fs.exists(cartella))) return `la cartella del lavoro "${nome}" non esiste piu`
   const lancio = (await leggiMemoriaAgenti($, await $.session.id())).dati.lanci[nome]
   const permesso = (await leggiSeEsiste($, p.permesso)) === 'default' ? 'default' : 'auto'
   const sforzo = SFORZI.find(s => s === lancio?.sforzo) ?? ''
 
-  return { sessione, cartella, modello: lancio?.modello, sforzo, esecutore: 'qwen', permesso }
+  return { sessione, cartella, modello: lancio?.modello, sforzo, esecutore, permesso }
 }
 
 async function datiRipresa($: EngineInterface, home: string, nome: string): Promise<Ripresa | string> {
   const trovato = await trovaLog($, home, nome)
   if (trovato === undefined) return `non trovo il log del lavoro "${nome}"`
-  if (trovato.esecutore === 'qwen') return datiRipresaQwen($, home, nome)
+  if (trovato.esecutore !== 'codex') return datiRipresaQwen($, home, nome, trovato.esecutore)
   const { log } = trovato
   const testa = intestazioneLog(await $.fs.read(log))
   const fileSessione = percorsiLavoro(home, nome).sessione
@@ -88,7 +95,7 @@ async function datiRipresa($: EngineInterface, home: string, nome: string): Prom
   return { sessione, cartella: testa.cartella, modello: lancio?.modello ?? testa.modello ?? config.codexModello, sforzo, esecutore: 'codex' }
 }
 
-/** Il corpo dei tool `codex_riprendi` e `qwen_riprendi` (e del tasto ↻ riprendi): la CLI la dice il log del lavoro. */
+/** Il corpo dei tool `codex_riprendi`, `qwen_riprendi` e `copilot_riprendi` (e del tasto ↻ riprendi): la CLI la dice il log del lavoro. */
 export async function codexRiprendi($: EngineInterface, grezzi: unknown, tool = NOME_TOOL_RIPRENDI): Promise<{ result: string } | { deny: string }> {
   try {
     const argomenti = (typeof grezzi === 'object' && grezzi !== null ? grezzi : {}) as { nome?: unknown; messaggio?: unknown }
@@ -109,7 +116,7 @@ export async function codexRiprendi($: EngineInterface, grezzi: unknown, tool = 
       pid, modello: r.modello, sforzo: r.sforzo, motivo: 'ripresa', cartella: r.cartella, inizioMs,
     }))
 
-    const cli = r.esecutore === 'qwen' ? 'Qwen' : 'Codex'
+    const cli = NOME_CLI[r.esecutore]
 
     return { result: `Lavoro ${cli} "${nome}" ripreso (sessione ${r.sessione}, pid ${pid}, ${r.modello ?? `modello di ${cli}`} ${r.sforzo}). Log: ${percorsi.log}; esito: ${percorsi.esito}.` }
   } catch (errore) {

@@ -6,7 +6,7 @@ import type { AgentInfo, EngineInterface } from 'claude-code'
 import type { LetturaLog } from './model'
 import { cartellaLavoro, messaggioErrore, parseEseguiLog, parsePs, ultimoSegmento } from './parsers'
 import type { ProcessoCodex } from './parsers'
-import { LOG_CODEX_REGIA, LOG_QWEN_REGIA, configPredefinita, parseConfig, validaRegistro } from './registro'
+import { LOG_CODEX_REGIA, LOG_COPILOT_REGIA, LOG_QWEN_REGIA, configPredefinita, parseConfig, validaRegistro } from './registro'
 import type { ConfigRegia, VoceRegistro } from './registro'
 import { ricordiDaMemoria } from './agenti'
 import { CHIAVE_AGENTI } from './memoria-agenti'
@@ -87,7 +87,7 @@ export function leggiLog(
   return provando(`log codex ${nome}`, async () => {
     if (!(await $.fs.exists(percorso))) {
       // Il log di codex_avvia nasce col primo lancio: finche manca non e un problema.
-      const isRegia = percorso.endsWith(`/${LOG_CODEX_REGIA}`) || percorso.endsWith(`/${LOG_QWEN_REGIA}`)
+      const isRegia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA, LOG_COPILOT_REGIA].some(l => percorso.endsWith(`/${l}`))
       return { avvisi: isRegia ? [] : [`log codex non trovato: ${nome}`] }
     }
     const { voci, ignorate } = parseEseguiLog(await $.fs.read(percorso))

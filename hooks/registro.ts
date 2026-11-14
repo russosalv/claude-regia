@@ -31,6 +31,8 @@ export type ConfigRegia = {
   modelli: Readonly<Record<string, string>>
   /** Modello di `codex_avvia` quando la chiamata non lo dice; senza, decide Codex. */
   codexModello?: string
+  /** Modello di `copilot_avvia` quando la chiamata non lo dice; senza, decide Copilot. */
+  copilotModello?: string
   /** Quanto la conversazione principale e tenuta a delegare (`/regia orchestra`). */
   orchestra: ModoOrchestra
   /** Regole di sobrieta nei prompt dei delegati (`/regia savings on|off`). */
@@ -61,6 +63,8 @@ export const AGGIORNAMENTO_MASSIMO_SEC = 3600
 export const LOG_CODEX_REGIA = '.claude/regia/codex/esegui.log'
 /** Il log dei lavori lanciati da `qwen_avvia`, sempre tra le fonti. */
 export const LOG_QWEN_REGIA = '.claude/regia/qwen/esegui.log'
+/** Il log dei lavori lanciati da `copilot_avvia`, sempre tra le fonti. */
+export const LOG_COPILOT_REGIA = '.claude/regia/copilot/esegui.log'
 export const SCIAME_PARALLELO_PREDEFINITO = 4
 export const MODI_ORCHESTRA = ['stretta', 'guida', 'off'] as const
 export type ModoOrchestra = (typeof MODI_ORCHESTRA)[number]
@@ -221,9 +225,9 @@ function campoTesto(grezzo: unknown, nome: string, predefinito?: string): Campo<
   return { valore: predefinito, avvisi: [`config.json: "${nome}" non e un nome valido`] }
 }
 
-/** I log di `codex_avvia` e `qwen_avvia` in coda ai log scelti, una volta sola. */
+/** I log di `codex_avvia`, `qwen_avvia` e `copilot_avvia` in coda ai log scelti, una volta sola. */
 function conLogRegia(logs: readonly string[], home: string): string[] {
-  const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA].map(l => `${home}/${l}`)
+  const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA, LOG_COPILOT_REGIA].map(l => `${home}/${l}`)
 
   return [...logs, ...regia.filter(r => !logs.includes(r))]
 }
@@ -259,6 +263,7 @@ export function parseConfig(
   const modelli = campoModelli(o.modelli)
   const instradamento = campoBooleano(o.instradamento, 'instradamento', true)
   const codexModello = campoTesto(o.codexModello, 'codexModello')
+  const copilotModello = campoTesto(o.copilotModello, 'copilotModello')
   const orchestra = campoOrchestra(o.orchestra)
   const risparmio = campoBooleano(o.risparmio, 'risparmio', true)
   const ponytail = campoBooleano(o.ponytail, 'ponytail', true)
@@ -287,8 +292,9 @@ export function parseConfig(
     controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
+    ...(copilotModello.valore === undefined ? {} : { copilotModello: copilotModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

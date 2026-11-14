@@ -1,6 +1,6 @@
 # regia
 
-**Turn Claude Code into an orchestrator.** Regia ("direction", as in film directing) is a Claude Code mod that makes your main session coordinate instead of doing the work itself, gives every task the model and effort it actually needs, and lets you run real swarms of Claude, Codex and Qwen Code agents, all watched from a live pane beside the chat.
+**Turn Claude Code into an orchestrator.** Regia ("direction", as in film directing) is a Claude Code mod that makes your main session coordinate instead of doing the work itself, gives every task the model and effort it actually needs, and lets you run real swarms of Claude, Codex, Qwen Code and GitHub Copilot CLI agents, all watched from a live pane beside the chat.
 
 It works on its own on any machine and any project, with no other plugin and nothing to add to your `CLAUDE.md`.
 
@@ -23,7 +23,7 @@ Regia addresses each one:
 | **Questions with their context** | Every decision that is yours arrives with where things stand, the options and a recommendation: in the pane, with keys to answer or dig deeper with an agent, and as a notification if you are away from the PC. |
 | **The plan as a task list** | Items with the description of the macro-activity, grouped by phase; the finished ones fold into a group you can open. |
 | **Per-task model and effort** | No fixed table per agent type. For each `Agent` call a quick Haiku check reads the actual task and picks the model and effort. A failed task retries one step higher. |
-| **Swarms** | `sciame_avvia` runs Claude, Codex and Qwen Code agents on a board with dependencies, a parallelism limit, an isolated git worktree for each task that writes, and mail between them. |
+| **Swarms** | `sciame_avvia` runs Claude, Codex, Qwen Code and GitHub Copilot CLI agents on a board with dependencies, a parallelism limit, an isolated git worktree for each task that writes, and mail between them. |
 | **Surveillance and wake** | Stuck agents are detected, and a session left alone overnight is woken up while the plan still has open items. |
 | **Token savings** | Delegates are told to write the minimum and report briefly (or Ponytail does, if present). The main session sleeps while a swarm runs, and the tools do not weigh on the prompt. |
 | **Live pane** | A fixed pane beside the chat: **PER TE** (the questions), **PIANO**, then **IN CORSO**, **IN SCALETTA**, **FATTI**, with model, effort, duration and tokens for each agent. |
@@ -46,7 +46,9 @@ The first interactive session after installing or updating Regia also installs, 
 
 The same rules apply to all three: once per Regia version, loaded from the next session, never updated by Regia. After that each lives its own life: a plugin you disabled by hand is left alone, and one you removed is not put back until Regia's next version. If an installation fails, Regia retries in the next session. `/regia ponytail off`, `/regia codex off` and `/regia qwen off` opt out (config keys `ponytail`, `pluginCodex`, `pluginQwen`, all true by default); the matching `on` installs the plugin now; without a value they show the status.
 
-Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen Code (`qwen`, tested with 1.0.0-preview.1) only for Qwen jobs, `python3` only for the `posta` mail CLI. No other plugin is required.
+GitHub Copilot CLI has no Claude Code plugin and needs none: the Copilot executor only uses the `copilot` command on your `PATH`, and `/regia doctor` says whether it is there.
+
+Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen Code (`qwen`, tested with 1.0.0-preview.1) only for Qwen jobs, [GitHub Copilot CLI](https://github.com/github/copilot-cli) (`copilot`, already signed in; written against the documentation of 1.0.112, see [its section](#github-copilot-cli-copilot_avvia-and-copilot_riprendi)) only for Copilot jobs, `python3` only for the `posta` mail CLI. No other plugin is required.
 
 ## Commands
 
@@ -58,7 +60,7 @@ Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen
 | `/regia quick [goal]` | A single agent; the main session switches to `quickModello` (sonnet), and the previous model comes back when you leave |
 | `/regia away` / `/regia here` | You are away from the PC: questions and a stopped or finished plan reach you as notifications |
 | `/regia all` | The pane for the **whole machine** |
-| `/regia doctor` | What is active right now: mode, version, Ponytail, Codex, Qwen, config |
+| `/regia doctor` | What is active right now: mode, version, Ponytail, Codex, Qwen, Copilot, config |
 | `/regia ponytail [on\|off]` | Whether Ponytail is active; `on` installs it now, `off` stops Regia installing it |
 | `/regia codex [on\|off]` | The Codex plugin for Claude Code; `on` installs it now, `off` stops Regia installing it |
 | `/regia qwen [on\|off]` | The Qwen Code plugin for Claude Code; `on` installs it now, `off` stops Regia installing it |
@@ -88,7 +90,7 @@ The model switch in quick is a `/model` that the mod issues as soon as the comma
 
 ### With NONoise
 
-[NONoise](https://github.com/russosalv/NONoise) scaffolds a project with skills, a docs hierarchy, a context file for each AI tool and an advisor, Polly, that reads the project's SDLC flow in `.nonoise/sdlc-flow.md`. Regia is its orchestration layer for Claude Code: `create-nonoise` installs the plugin `regia@claude-regia` in the project (and declares it in `.claude/settings.json` when it works offline), and from version 1.9 NONoise no longer ships its own delegation skills (`swarm-router`, `copilot-delegate`, `gemini-delegate`, `codex-delegate`): what they did is done here.
+[NONoise](https://github.com/russosalv/NONoise) scaffolds a project with skills, a docs hierarchy, a context file for each AI tool and an advisor, Polly, that reads the project's SDLC flow in `.nonoise/sdlc-flow.md`. Regia is its orchestration layer for Claude Code: `create-nonoise` installs the plugin `regia@claude-regia` in the project (and declares it in `.claude/settings.json` when it works offline), and from version 1.9 NONoise no longer ships its own delegation skills (`swarm-router`, `copilot-delegate`, `gemini-delegate`, `codex-delegate`). Routing work to a swarm and delegating to Codex and to GitHub Copilot CLI are done here (`sciame_avvia`, `codex_avvia`, `copilot_avvia`); Gemini CLI is not one of Regia's executors, so `gemini-delegate` has no counterpart.
 
 The two share the same three modes. In the flow file each SDLC phase lists the modes it belongs to, and when the file is there the rule of the current mode tells the main session to follow it:
 
@@ -139,6 +141,8 @@ The effort each subagent really runs with is read from `turn.step`, as Vitals do
 
 For Codex: `codex_avvia` without `sforzo` asks Haiku for the same judgment; the model, if it is neither in the call nor in the config (`codexModello`), is decided by Codex's own configuration.
 
+For Copilot: the model is passed (`--model`) only if the call or the config (`copilotModello`) gives one, otherwise Copilot uses its own default; the effort is passed (`--effort`) only if the call gives `sforzo`, with no Haiku judgment. Qwen works the same way, without a config key for the model.
+
 ## Swarms
 
 ```
@@ -150,7 +154,8 @@ sciame_avvia({
     { nome: "core",   prompt: "...", scrive: true, dopo: ["map"] },
     { nome: "client", prompt: "...", scrive: true, esecutore: "codex", dopo: ["map"] },
     { nome: "doc",    prompt: "...", esecutore: "qwen", dopo: ["map"] },
-    { nome: "review", prompt: "...", dopo: ["core", "client"] }
+    { nome: "tests",  prompt: "...", scrive: true, esecutore: "copilot", dopo: ["core"] },
+    { nome: "review", prompt: "...", dopo: ["core", "client", "tests"] }
   ]
 })
 ```
@@ -163,7 +168,7 @@ sciame_avvia({
 - **The main session spends nothing while it waits**: the swarm answers at once and wakes it with a single turn at the end, with the summary. Full reports are in `~/.claude/regia/sciami/<id>/<task>.md`.
 - `sciame_stato` and `/regia swarm` show the board; `sciame_ferma` cancels what is waiting, and what is running finishes its job. Waiting tasks show in the plan list in the pane.
 
-Limits: `turn.complete` does not say whether an ending is provisional; the signal is the agent's `waiting` state, which also holds for a plan to approve or an `Agent` call (that is why the task times out anyway). Merging the branches is left to a delegate of the main session; if the session closes, Claude subagents die with it (Codex ones do not); a task that finishes while the mod reloads counts as completed, without its report.
+Limits: `turn.complete` does not say whether an ending is provisional; the signal is the agent's `waiting` state, which also holds for a plan to approve or an `Agent` call (that is why the task times out anyway). Merging the branches is left to a delegate of the main session; if the session closes, Claude subagents die with it (Codex, Qwen and Copilot jobs do not); a task that finishes while the mod reloads counts as completed, without its report.
 
 ## Surveillance and wake
 
@@ -184,7 +189,7 @@ For this to work the plan must be in the list: the orchestrator rule asks for it
 
 - **A short final report** at the end of every delegate: the main session rereads every report at every turn, and it is the cost that grows most.
 - **A sobriety rule** (write the minimum, reuse, no abstractions nobody asked for; never cut validation, security or tests of risky logic). If [Ponytail](https://github.com/DietrichGebert/ponytail) is active the mod does not repeat it: Ponytail already carries its own to subagents. There is no need to install it separately: when the mod is new or updated, the first interactive session installs it if it is missing (`claude plugin marketplace add` and `install`), once per version, and it loads from the next session. Then it lives its own life: the mod does not update it and, if you remove it, does not put it back until the next version. `/regia ponytail off` stops the mod installing it; one disabled by hand stays as it is; if the installation fails the mod uses its own rule and retries in the next session. The same goes for the Codex and Qwen plugins (see Install).
-  Codex and Qwen jobs always receive the mod's rule.
+  Codex, Qwen and Copilot jobs always receive the mod's rule.
 - **The minimum model and effort** that suffice for the task (see above).
 - **Deferred tools**: the schemas do not weigh on every request of every session. The model loads them with ToolSearch when needed.
 - **The swarm** does not keep the main session busy while it waits.
@@ -193,8 +198,8 @@ For this to work the plan must be in the list: the orchestrator rule asks for it
 
 - The status line always concerns the session, for example `● 3 codex · 2 claude · 4 da fare`. The engine prefixes it with `⚠ regia:`: that prefix cannot be removed.
 - **Talk to a subagent**: `▸ apri` brings its conversation into the main view; `[ ← principale ]` or `/regia` go back. In a narrow pane the job's name becomes clickable (`▸`).
-- **A Codex or Qwen log**: `▸ log` shows the last 30 lines, `[ ↻ ]` rereads them.
-- **Write**: `✉ scrivi` opens a field at the top of the pane; Enter sends as `utente`. `↻ riprendi` resumes a finished Codex or Qwen job.
+- **A Codex, Qwen or Copilot log**: `▸ log` shows the last 30 lines, `[ ↻ ]` rereads them.
+- **Write**: `✉ scrivi` opens a field at the top of the pane; Enter sends as `utente`. `↻ riprendi` resumes a finished Codex, Qwen or Copilot job.
 - **Adaptive columns**: when space runs short they give way, in order: tokens, activity indicator, executor, keys, model and Dove/Esito. Lavoro and Durata stay. No row wraps.
 - Sources are reread every 15 seconds (configurable) and at every `/regia`; while something is running the pane redraws every second. A source that fails gives a warning line, the others carry on.
 
@@ -290,6 +295,25 @@ timeout 14400 qwen [-m <model>] [--reasoning-effort <effort>] --permission-mode 
 - **`qwen_riprendi(nome, messaggio)`** (and the `↻ riprendi` key) uses `qwen --resume <id>`: the id is chosen by the script (`--session-id`) and written to `<nome>.sessione`, with folder and permission in `<nome>.cartella` and `<nome>.permesso`. Tried: the session remembers the previous round.
 - **In a swarm**: `esecutore: "qwen"`. `scrive: true` has its own worktree and the `auto` permission; `scrive: false` works read-only on the repository (`default`). The `posta` CLI requires a shell command: read-only, Qwen cannot use it.
 
+## GitHub Copilot CLI: `copilot_avvia` and `copilot_riprendi`
+
+The same idea and the same code again, with [GitHub Copilot CLI](https://github.com/github/copilot-cli) in place of `qwen`. `copilot_avvia(nome, cartella, prompt, regole?, sforzo?, modello?, scrive?)` writes prompt, log and outcome in `~/.claude/regia/copilot/<nome>/` and the `inizio`/`fine` lines in `~/.claude/regia/copilot/esegui.log` (always among the pane's sources). The `script/copilot-esegui` script runs, from the job's folder and with `nice`:
+
+```
+timeout 14400 copilot [--model <model>] [--effort <effort>] <permission flags> --no-ask-user -s --log-dir <job folder>/log --session-id <uuid> -C <folder> < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
+```
+
+**Not tried on a real `copilot`.** Every flag comes from the official documentation (the [command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) and the [programmatic reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference), as of Copilot CLI 1.0.112) and from NONoise's retired `copilot-delegate` skill, which ran `copilot -p … --allow-all-tools --allow-all-paths` in production. The script itself is tested with a fake `copilot` (`tests/copilot-esegui.sh`). What the documentation does not state is marked below.
+
+- **Prompt from stdin**: the documented alternative to `-p` ("pipe a prompt to the `copilot` command"), so there is no argument limit and no prompt in `ps`. **`-s`** (`--silent`) leaves only the agent's response on stdout: it is the outcome (`<nome>.esito.md`). An empty answer with exit 0 counts as a failure (exit 1). **`--no-ask-user`**: nobody is there to answer the `ask_user` form.
+- **Permission**: `scrive` (default `true`) is `--allow-all-tools --allow-all-paths`: every tool without approval, and paths outside the folder (the `posta` CLI lives in `~/.claude/regia/bin`). URLs are not opened up (`--allow-all-urls` is not passed). `scrive: false` is `--deny-tool=write` and no allow flag at all: file creation and modification are denied outright (deny rules win over everything), and in a run with nobody to approve, whatever needs an approval is denied, so what is left is reading inside the folder and the shell commands Copilot itself judges read-only. That last part is Copilot's own analysis, not a guarantee, and it has not been measured here: a read-only job that needs a command Copilot wants approved (the `posta` CLI among them) will be refused it. There is no stricter mode in the mod: `--deny-tool=shell` would also take away `git diff`.
+- **Model**: the one in the call, otherwise `copilotModello` in config, otherwise Copilot's own (`COPILOT_MODEL`, its `settings.json`, its default). Copilot writes Claude models with a dot (`claude-sonnet-4.6`). **Effort**: `--effort low|medium|high` only if you give `sforzo` (in a swarm, only on the retry one step higher); going by Copilot's changelog, a level the model does not offer is reported with a warning and left unapplied.
+- **A single attempt**, and a safety cap of 4 hours (`REGIA_COPILOT_TIMEOUT`, seconds) where `timeout` exists (not on a stock macOS). A missing `copilot` is exit 127 in `esegui.log`; in a swarm the mod retries once, as for every task. Like `codex-esegui`, the script also looks for a `copilot` installed under nvm.
+- **Surveillance**: a job silent for `stalloMinuti` is stopped. Since stderr stays quiet, the mod also looks at the outcome file and at the session's event log, `~/.copilot/session-state/<id>/events.jsonl` (`$COPILOT_HOME` is honoured). Not measured: how often Copilot writes that file during a long command; if it writes it only at the end, a job that works in silence for more than `stalloMinuti` would be stopped by mistake, and `stalloMinuti` is the knob.
+- **The pane** shows Copilot jobs like Codex ones (a `copilot` row, `▸ log`, `✉ scrivi`, `↻ riprendi`, count `● 1 copilot`). With the prompt on stdin there is no `-p` to recognize a job by, so the live ones are the `copilot` processes with `--log-dir ~/.claude/regia/copilot/<nome>/log`: that is where the name comes from (folder from `-C`, model from `--model`), and it keeps Copilot's own logs in the job's folder. A `copilot -p` you launch by hand counts too, an interactive session does not.
+- **`copilot_riprendi(nome, messaggio)`** (and the `↻ riprendi` key) runs the same command with `--resume=<id>` in place of `--session-id <uuid> -C <folder>`: the id is a UUID chosen by the script (the documentation says an unknown UUID given to `--session-id` starts a new session with that id, and that `--resume=SESSION-ID` is the way to continue one without a terminal) and written to `<nome>.sessione`, with folder and permission in `<nome>.cartella` and `<nome>.permesso`. Not tried: that the resumed session really remembers the previous round.
+- **In a swarm**: `esecutore: "copilot"`. `scrive: true` has its own worktree and the write permission; `scrive: false` works read-only on the repository.
+
 ## The to-do list
 
 The tool `scaletta_scrivi(id, titolo, stato, descrizione, fase, note)` writes to `~/.claude/regia/registro.json`, which the pane reads: `stato` is `scaletta`, `in_corso`, `fatto`, `bloccato`, or `rimossa` to remove the item. Each item remembers the session that wrote it; those added by hand in the file, without a session, are valid for all.
@@ -309,12 +333,12 @@ Where it can be wrong:
 - after `--resume` or `/clear` the session id changes: processes launched before stay with the session of that time;
 - if two sessions launch a job with the same name, that name's history appears in both.
 
-For each row: job name, executor (`claude`, `codex` or `qwen`), model (with the effort for Codex), duration, folder or agent type, a short outcome (exit code, number of commits). The `.esito.md` file is no longer shown.
+For each row: job name, executor (`claude`, `codex`, `qwen` or `copilot`), model (with the effort for Codex), duration, folder or agent type, a short outcome (exit code, number of commits). The `.esito.md` file is no longer shown.
 
 ## Sources
 
 1. **Claude subagents** of the session, from `$.agent.list()`. In progress only `running`, `pending` and `waiting` (and `idle` for a teammate, who waits for messages); `completed` and an `idle` subagent go in FATTI as completed, `failed` and `killed` as failed and stopped.
-2. **Running Codex**: `ps -ww -eo pid,etime,args`, `codex exec` lines. It extracts `-m` (model), `-c model_reasoning_effort=...`, `-C` (folder) and `-o` (the job's name is the basename without `.esito.md`). Processes duplicated by the npm launcher (same `-o`) count once. Qwen `qwen -p` processes are read the same way.
+2. **Running Codex**: `ps -ww -eo pid,etime,args`, `codex exec` lines. It extracts `-m` (model), `-c model_reasoning_effort=...`, `-C` (folder) and `-o` (the job's name is the basename without `.esito.md`). Processes duplicated by the npm launcher (same `-o`) count once. Qwen `qwen -p` processes are read the same way, and so are the `copilot` processes started by `copilot_avvia`.
 3. **Codex history**: `~/.claude/regia/codex/esegui.log`, written by `codex_avvia`, plus the logs in `codexLogs` if you have others, with lines like:
    ```
    14:14 inizio job-alpha
@@ -357,7 +381,8 @@ For each row: job name, executor (`claude`, `codex` or `qwen`), model (with the 
      "attesaMinuti": 45,
      "controlloMinuti": [15, 30, 60],
      "quickModello": "sonnet",
-     "codexModello": "model-name"
+     "codexModello": "model-name",
+     "copilotModello": "model-name"
    }
    ```
    `orchestra` accepts `strict`, `guide` or `off` (and the Italian `stretta`, `guida`). `instradamento` is `/regia models`, `risparmio` is `/regia savings`, `sveglia` is `/regia wake`, and `ponytail`, `pluginCodex`, `pluginQwen` are the install opt-outs of `/regia ponytail`, `/regia codex` and `/regia qwen`. `~` is expanded. `codexLogs` and `aggiornamentoSecondi` are read when the mod starts (after a change it must be reloaded); the others on each use.
@@ -387,6 +412,7 @@ Pure logic lives in the parsers and the board (`hooks/parsers.ts`, `hooks/regist
 ```sh
 claude plugin validate .
 claude plugin test .
+bash tests/qwen-esegui.sh && bash tests/copilot-esegui.sh   # the launch scripts, with a fake CLI
 claude --plugin-dir .   # try it in a session; edits reload
 ```
 

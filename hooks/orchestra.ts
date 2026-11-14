@@ -45,7 +45,7 @@ export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
     '- Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod guardando il compito. Indicali solo se la persona lo chiede o se riprovi un lavoro fallito (allora un gradino sopra).',
     '- Lavori indipendenti: piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
     '- Tre o piu compiti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo.',
-    '- Compiti lunghi e autonomi fuori dalla sessione: `mcp__regia__codex_avvia` (o `mcp__regia__qwen_avvia` per Qwen Code).',
+    '- Compiti lunghi e autonomi fuori dalla sessione: `mcp__regia__codex_avvia` (o `mcp__regia__qwen_avvia` per Qwen Code, `mcp__regia__copilot_avvia` per GitHub Copilot CLI).',
     '- Il piano: prima di partire scrivi ogni voce con `mcp__regia__scaletta_scrivi`, con `descrizione` (la macro-attivita spiegata alla persona: che cosa, perche, che cosa ne esce) e `fase`. La persona la legge nel pane come tasklist. Tienila aggiornata (`in_corso`, `fatto`, `bloccato` con il motivo). Porta avanti il piano fino in fondo senza chiedere il permesso a ogni voce: finche restano voci aperte e nessuno lavora, la regia ti risveglia.',
     '- Controlla gli agenti: uno che non da segni di vita o gira a vuoto fermalo (TaskStop) e rilancia il compito, piu chiaro o un gradino sopra.',
     SE_NONOISE.long,

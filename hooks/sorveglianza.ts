@@ -14,7 +14,8 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { RegiaRiga, RegiaSnapshot } from '../types/index'
-import { intestazioneLog } from './codex'
+import { NOME_CLI, intestazioneLog } from './codex'
+import type { EsecutoreCli } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
 import { CONTROLLO_PREDEFINITO_MIN } from './registro'
 import { cartellaDi, messaggioErrore } from './parsers'
@@ -162,7 +163,7 @@ export function notaPassoAgente(agentId: string, oraMs: number): void {
   ultimoPasso.set(agentId, oraMs)
 }
 
-/** Uccide i `codex exec` di un lavoro: lo script scrive `fine` con exit diverso da 0. */
+/** Uccide i processi (`codex exec`, `qwen`, `copilot`) di un lavoro: lo script scrive `fine` con exit diverso da 0. */
 async function uccidiCodex($: EngineInterface, nome: string): Promise<boolean> {
   const pids = (await leggiProcessi($)).dati?.filter(p => p.nome === nome).map(p => String(p.pid)) ?? []
   if (pids.length === 0) return false
@@ -208,7 +209,24 @@ async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, no
   return Math.max(stat.mtimeMs, sessione?.mtimeMs ?? 0)
 }
 
-/** Gli agenti in corso fermi da troppo: i Codex e i Qwen li ferma, i Claude li elenca. */
+/**
+ * L'ultimo segno di vita di un Copilot. Il log (stderr) resta fermo: si guardano l'esito (stdout) e il registro
+ * degli eventi della sessione (`~/.copilot/session-state/<id>/events.jsonl`, l'id sta in `<nome>.sessione`).
+ */
+async function ultimoSegnoCopilot($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
+  const stat = await $.fs.stat(log).catch(() => undefined)
+  if (stat === undefined) return undefined
+  const cartella = cartellaDi(log)
+  const file = `${cartella}/${nome}.sessione`
+  const id = (await $.fs.exists(file)) ? (await $.fs.read(file)).trim() : ''
+  const radice = (await $.env.get('COPILOT_HOME')) ?? `${home}/.copilot`
+  const altri = [`${cartella}/${nome}.esito.md`, ...(/^[\w-]+$/.test(id) ? [`${radice}/session-state/${id}/events.jsonl`] : [])]
+  const tempi = await Promise.all(altri.map(p => $.fs.stat(p).then(x => x.mtimeMs, () => 0)))
+
+  return Math.max(stat.mtimeMs, ...tempi)
+}
+
+/** Gli agenti in corso fermi da troppo: i Codex, i Qwen e i Copilot li ferma, i Claude li elenca. */
 async function controllaStalli($: EngineInterface, home: string, inCorso: readonly RegiaRiga[], oraMs: number, stalloMs: number): Promise<string[]> {
   const righe: string[] = []
   for (const r of inCorso) {
@@ -216,16 +234,18 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
       if (segnalati.has(r.chiave)) continue
       const log = await $.fs.stat(r.fileLog).catch(() => undefined)
       if (log === undefined || oraMs - log.mtimeMs < stalloMs) continue
-      const isQwen = r.esecutore === 'qwen'
-      const cli = isQwen ? 'Qwen' : 'Codex'
-      const segno = isQwen ? await ultimoSegnoQwen($, home, r.fileLog, r.nome) : await ultimoSegnoCodex($, home, r.fileLog)
+      const esecutore: EsecutoreCli = r.esecutore === 'qwen' || r.esecutore === 'copilot' ? r.esecutore : 'codex'
+      const cli = NOME_CLI[esecutore]
+      const segno = esecutore === 'copilot' ? await ultimoSegnoCopilot($, home, r.fileLog, r.nome)
+        : esecutore === 'qwen' ? await ultimoSegnoQwen($, home, r.fileLog, r.nome)
+          : await ultimoSegnoCodex($, home, r.fileLog)
       if (segno === undefined || oraMs - segno < stalloMs) continue
       segnalati.add(r.chiave)
       const minuti = Math.round((oraMs - segno) / 60_000)
       const isUcciso = await uccidiCodex($, r.nome)
       $.ui.toast(`regia: ${cli} ${r.nome} fermo da ${minuti} min${isUcciso ? ', fermato' : ''}`, { timeoutMs: 10_000 })
       righe.push(isUcciso
-        ? `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione ${cli} fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (${isQwen ? 'qwen_riprendi' : 'codex_riprendi'} o un nuovo lavoro).`
+        ? `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione ${cli} fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (${esecutore}_riprendi o un nuovo lavoro).`
         : `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min, e non e stato possibile fermarlo: fallo tu.`)
     } else if (r.fonte === 'claude' && r.agenteId !== undefined) {
       const visto = ultimoPasso.get(r.agenteId)

@@ -148,7 +148,7 @@ test('validaRegistro rifiuta una radice senza lista di lavori', () => {
 test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
   const ok = parseConfig({ codexLogs: ['~/a/log', '/b/log'], aggiornamentoSecondi: 30 }, '/home/u')
   expect(ok.config).toEqual({
-    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log'],
+    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log'],
     aggiornamentoSecondi: 30,
     instradamento: true,
     modelli: {},
@@ -168,8 +168,11 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
 
   const vuota = parseConfig({}, '/home/u')
   expect(vuota.config.aggiornamentoSecondi).toBe(15)
-  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log'])
+  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log'])
   expect(vuota.config.codexModello).toBeUndefined()
+  expect(vuota.config.copilotModello).toBeUndefined()
+  expect(parseConfig({ copilotModello: ' claude-sonnet-4.6 ' }, '/home/u').config.copilotModello).toBe('claude-sonnet-4.6')
+  expect(parseConfig({ copilotModello: 'due parole' }, '/home/u').avvisi).toEqual(['config.json: "copilotModello" non e un nome valido'])
 
   const storta = parseConfig({ codexLogs: 'no', aggiornamentoSecondi: 0 }, '/home/u')
   expect(storta.avvisi).toHaveLength(2)
@@ -187,6 +190,7 @@ test('durate compatte, modelli abbreviati, esiti brevi e percorsi corti', () => 
   expect(abbreviaModello('sonnet')).toBe('sonnet')
   expect(abbreviaModello('claude-haiku-4-5-20251001')).toBe('haiku 4.5')
   expect(abbreviaModello('claude-opus-5-5')).toBe('opus 5.5')
+  expect(abbreviaModello('claude-sonnet-4.6')).toBe('sonnet 4.6')
   expect(esitoBreve('exit 0 · 5 commit')).toBe('5 commit')
   expect(esitoBreve('exit 143')).toBe('exit 143')
   expect(esitoBreve('exit 0')).toBe('ok')
