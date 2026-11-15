@@ -26,6 +26,7 @@ Regia addresses each one:
 | **Swarms** | `sciame_avvia` runs Claude, Codex, Qwen Code and GitHub Copilot CLI agents on a board with dependencies, a parallelism limit, an isolated git worktree for each task that writes, and mail between them. |
 | **Per-task executor** | The main session does not have to name who does a task: for each swarm task the mod picks among Claude and the external executors you have enabled and installed (Codex, Qwen Code, Copilot), so they get used without you asking. See [Executors](#executors). |
 | **Surveillance and wake** | Stuck agents are detected, and a session left alone overnight is woken up while the plan still has open items. |
+| **Compaction that keeps the work going** | When the main session's context passes a threshold (60%), the mod compacts it at the end of the turn, telling the summary what to keep and handing it the plan, the open questions and the swarms from its own stores. In long mode the main session then carries on by itself. See [Compaction](#compaction). |
 | **Token savings** | Delegates are told to write the minimum and report briefly (or Ponytail does, if present). The main session sleeps while a swarm runs, and the tools do not weigh on the prompt. |
 | **Live pane** | A fixed pane beside the chat: **PER TE** (the questions), **PIANO**, then **IN CORSO**, **IN SCALETTA**, **FATTI**, with model, effort, duration and tokens for each agent. |
 
@@ -69,13 +70,17 @@ Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen
 | `/regia qwen [on\|off]` | The Qwen Code **plugin** for Claude Code; `on` installs it now, `off` stops Regia installing it. The Qwen executor is `/regia executors qwen on\|off` |
 | `/regia swarm` | The boards of this session's swarms |
 | `/regia wake [on\|off]` | Surveillance of stuck agents and wake of the main session while the plan is open |
+| `/regia compact` | Compaction: on or off, the threshold, how full the context is now, and when the mod last compacted in this session |
+| `/regia compact on\|off` | Turn the mod's compaction and its instructions for every compaction on or off (config key `compatta`) |
+| `/regia compact <number>` | Set the threshold, a whole percentage from 30 to 90 (config key `compattaSoglia`) |
+| `/regia compact now` | Compact right away with Regia's instructions, as soon as the command has ended |
 | `/regia orchestra [strict\|guide\|off]` | How firmly the main session must delegate |
 | `/regia models [on\|off]` | Model and effort decided per task |
 | `/regia savings [on\|off]` | Savings rules in delegates' prompts |
 
-The earlier Italian names (`medio`, `via`, `qui`, `tutti`, `sciame`, `sveglia`, `modelli`, `risparmio`, `stretta`, `guida`) still work as aliases, and so does `esecutori` for `executors`.
+The earlier Italian names (`medio`, `via`, `qui`, `tutti`, `sciame`, `sveglia`, `modelli`, `risparmio`, `stretta`, `guida`) still work as aliases, and so do `esecutori` for `executors` and `compatta` for `compact`.
 
-Without a value, the on/off commands show the current state; `/regia` also sums up the settings in one line, for example `Mode medium · orchestra guide · models on · savings on · wake on`. The modes (`long`, `medium`, `quick`, `away`, `here`) apply to the session and stay even if you resume it; the other options apply at once to every session.
+Without a value, the on/off commands show the current state; `/regia` also sums up the settings in one line, for example `Mode medium · orchestra guide · models on · savings on · wake on · compact 60%`. The modes (`long`, `medium`, `quick`, `away`, `here`) apply to the session and stay even if you resume it; the other options apply at once to every session.
 
 ## The modes
 
@@ -85,6 +90,7 @@ Without a value, the on/off commands show the current state; `/regia` also sums 
 | External executors | part of the team: two or more independent tasks, or one long self-contained task, go in a swarm and the mod picks who does each | independent pieces can go in a swarm, spread over Claude and the enabled executors | not used, unless you ask |
 | Plan in the list | mandatory, with description and phase | if the work has more steps | no |
 | Surveillance | stuck agents and wake of the main session | stuck agents only | off |
+| After a compaction by the mod | resumes by itself from the first open item of the plan | waits for you | waits for you |
 | Questions | `domanda_scrivi`, in the pane, notification if you are away | as long | in chat, with context |
 | Main session's model | yours | yours | `quickModello` (default `sonnet`, in config) |
 
@@ -221,6 +227,31 @@ A session left alone (overnight) must not stop halfway through the plan. Every m
 - **No idle laps.** With nobody at work and no progress (no item or job changing state) the wait doubles at each wake, 3, 6, 12, 24, 48 minutes; after 5 the mod stops and warns with a toast. Progress reopens it. If there is a draft in the prompt field, the mod does not step in front of the person. If you stop the main session with Esc, the mod no longer wakes it (nor reports stalls to it) until you write to it yourself.
 
 For this to work the plan must be in the list: the orchestrator rule asks for it (every item with `scaletta_scrivi`, updated at every step). It only applies with a surface (not `claude -p`). `/regia wake off` turns it off.
+
+## Compaction
+
+A long session fills its context, and the engine's own compaction arrives late and knows nothing of what Regia keeps outside the conversation. So the mod compacts earlier, with instructions that let the work go on.
+
+- **What triggers it.** After each turn of the main session the mod reads how full the context window is (`$.session.usage()`, the figure of the status line; the call costs nothing). At `compattaSoglia` percent or more (default 60) it compacts the conversation. Only the main session, never a subagent, and only with a surface (not `claude -p` or the SDK). Not after a turn you stopped with Esc: it waits for the end of the next one.
+- **What the instructions keep.** The summary is told to keep the goal you gave and every constraint or preference you stated; the decisions taken and why; what was done and verified, apart from what was only claimed; the files and branches touched; what is in progress and the very next step; the errors met and how they were solved; what you are waiting for. And to drop tool output dumps and exploration that led nowhere.
+- **What Regia adds from its own stores.** Read at that moment, so they do not depend on the summary: the mode and whether you are away; the plan, one line per item with phase, state and description (at most 40 items and about 4000 characters: finished items are left out first, and the text says how many); the open questions for you, with their options; the swarms of this session still running or waiting, as the short board; the usable executors. The summary is told that these are the current facts and must appear as they are. All of it stays under 6000 characters.
+- **Every compaction gets them.** The same instructions are added to `/compact` (after your own, which stay first), to the engine's automatic compaction and to another mod's. A subagent's compaction is left alone.
+- **Afterwards.** After a compaction the mod made:
+  - in **long**, if the plan has items to do (`scaletta` or `in_corso`), the mod sends the main session one short message: the context was compacted, the open items and the open questions (from the stores), continue from the first open item and re-read the files rather than trust the summary for details. It is not sent while a swarm or an agent of the session is working (when it ends it reaches the main session by itself), when only `bloccato` items are left (they wait for something else, usually your answer), or over a draft in the prompt field. It goes through the same door as the [wake](#surveillance-and-wake), so the two never both fire, and it follows `compatta`, not `sveglia`;
+  - in **medium** and **quick** nothing is sent: your next message continues on the summary.
+
+  A compaction you asked for (`/compact`, `/regia compact now`) never makes the main session resume.
+- **No loops.** If the context is still at the threshold or above at the end of the turn that follows a compaction by the mod, and has not gone below it since, something that a summary cannot shrink is filling it (the system prompt, the tools, the memory files). The mod does not compact again until the context has grown by another 10 points, and tells you once, with a toast, to raise the threshold. It never compacts twice at the end of the same turn.
+
+`/regia compact` shows the state, `/regia compact on|off` and `/regia compact <number>` change it (config keys `compatta` and `compattaSoglia`, from 30 to 90), `/regia compact now` compacts right away; `/regia doctor` has a line with the setting, the threshold and the current fill. A toast tells each compaction, for example `regia: contesto compattato, era al 63%; la conversazione ora pesa circa 9k token`.
+
+Limits, stated plainly:
+
+- **Only between turns.** The engine refuses to compact while a turn runs (and inside a command), and the mod never interrupts a turn. A context that passes the threshold in the middle of a long turn is compacted when that turn ends; in the meantime `/regia compact` says "Da compattare". If the next turn starts at once (a queued message), the mod tries again at its end. Past its own limit the engine compacts by itself, with the same instructions.
+- **A context that cannot go below the threshold.** See "No loops": the mod stops and says so; raise `compattaSoglia`.
+- **The summary is written by the model.** The instructions say what to keep and hand it Regia's facts, but nothing checks what it writes. The plan, the questions and the swarms do not depend on it: they stay in Regia's files and in the pane.
+- **No "from 63% to 21%".** Right after a compaction the engine has no fill to report (it comes with the next response), and the size it gives for the result is not the fill of the window (on 2.1.325 it counts the conversation alone, without the system prompt and the tools). So the toast gives the fill before and the size of the conversation after; the fill after shows in `/regia compact` from the next turn.
+- The instructions are added to an early summary the engine prepares ahead of time (`precompute`) too, since the engine may reuse it; Regia's facts in it are those of that moment.
 
 ## Token savings
 
@@ -419,11 +450,13 @@ For each row: job name, executor (`claude`, `codex`, `qwen` or `copilot`), model
      "controlloMinuti": [15, 30, 60],
      "quickModello": "sonnet",
      "esecutori": ["codex", "qwen", "copilot"],
+     "compatta": true,
+     "compattaSoglia": 60,
      "codexModello": "model-name",
      "copilotModello": "model-name"
    }
    ```
-   `orchestra` accepts `strict`, `guide` or `off` (and the Italian `stretta`, `guida`). `instradamento` is `/regia models`, `risparmio` is `/regia savings`, `sveglia` is `/regia wake`, and `ponytail`, `pluginCodex`, `pluginQwen` are the install opt-outs of `/regia ponytail`, `/regia codex` and `/regia qwen`. `esecutori` is `/regia executors`: the external executors the mod may use (`codex`, `qwen`, `copilot`; `[]` for Claude only). `~` is expanded. `codexLogs` and `aggiornamentoSecondi` are read when the mod starts (after a change it must be reloaded); the others on each use.
+   `orchestra` accepts `strict`, `guide` or `off` (and the Italian `stretta`, `guida`). `instradamento` is `/regia models`, `risparmio` is `/regia savings`, `sveglia` is `/regia wake`, and `ponytail`, `pluginCodex`, `pluginQwen` are the install opt-outs of `/regia ponytail`, `/regia codex` and `/regia qwen`. `esecutori` is `/regia executors`: the external executors the mod may use (`codex`, `qwen`, `copilot`; `[]` for Claude only). `compatta` and `compattaSoglia` are `/regia compact`: whether the mod compacts and adds its instructions, and the threshold as a whole percentage from 30 to 90 (a value out of range gives a warning and the default, 60). `~` is expanded. `codexLogs` and `aggiornamentoSecondi` are read when the mod starts (after a change it must be reloaded); the others on each use.
 
 If a source fails the pane shows a yellow warning line and the others carry on.
 
@@ -447,7 +480,7 @@ If a source fails the pane shows a yellow warning line and the others carry on.
 
 ## Development
 
-Pure logic lives in the parsers and the board (`hooks/parsers.ts`, `hooks/registro.ts`, `hooks/instradamento.ts`, `hooks/sciame.ts`) and is tested separately; the swarm engine is in `hooks/sciame-motore.ts`, delegation in `hooks/orchestra.ts`, executor detection and choice in `hooks/esecutori.ts` (the rules of the choice are pure, in `hooks/instradamento.ts`). Drawing lives in `hooks/tavola.tsx` (table, rules, boxes, pills), `hooks/layout.ts` (cells and columns, pure) and `hooks/vista.tsx` (composition). `tests/resa.ts` turns the drawn tree into lines of text, so the tests check that at 40, 60, 80 and 120 columns no line exceeds the width. Checks:
+Pure logic lives in the parsers and the board (`hooks/parsers.ts`, `hooks/registro.ts`, `hooks/instradamento.ts`, `hooks/sciame.ts`, `hooks/compatta.ts`) and is tested separately; the swarm engine is in `hooks/sciame-motore.ts`, delegation in `hooks/orchestra.ts`, compaction in `hooks/compatta.ts` (the instructions and the decisions, pure) and `hooks/compatta-motore.ts`, executor detection and choice in `hooks/esecutori.ts` (the rules of the choice are pure, in `hooks/instradamento.ts`). Drawing lives in `hooks/tavola.tsx` (table, rules, boxes, pills), `hooks/layout.ts` (cells and columns, pure) and `hooks/vista.tsx` (composition). `tests/resa.ts` turns the drawn tree into lines of text, so the tests check that at 40, 60, 80 and 120 columns no line exceeds the width. Checks:
 
 ```sh
 claude plugin validate .

@@ -91,8 +91,11 @@ type Esito =
   | { tipo: 'saltata' | 'rifiutata'; motivo: string }
   | { tipo: 'occupata' }
 
-/** Come il motore dice che un turno e in corso (2.1.325): `$.session.compact: a turn is running (...)`. */
-const isRifiutoPerTurno = (motivo: string): boolean => /turn is running/i.test(motivo)
+/**
+ * Vero se il motore ha rifiutato perche un turno e in corso: lo dice lui (2.1.325:
+ * `$.session.compact: a turn is running (...)`) o la mod ne ha sentito l'inizio.
+ */
+const isRifiutoPerTurno = (motivo: string): boolean => /turn is running/i.test(motivo) || isPrincipaleOccupata()
 
 /** Compatta con le istruzioni date e ricorda l'esito. Non lancia: il rifiuto del motore e un esito. */
 async function compatta($: EngineInterface, o: { istruzioni: string; origine: 'soglia' | 'comando'; primaPct?: number }): Promise<Esito> {
@@ -112,7 +115,7 @@ async function compatta($: EngineInterface, o: { istruzioni: string; origine: 's
       ...(tokensAfter === undefined ? {} : { tokensDopo: tokensAfter }),
     }).catch(errore => $.ui.toast(`regia: compattazione non ricordata (${messaggioErrore(errore)})`))
 
-    return { tipo: 'fatta', ...(esito.tokensAfter === undefined ? {} : { tokensDopo: esito.tokensAfter }) }
+    return { tipo: 'fatta', ...(tokensAfter === undefined ? {} : { tokensDopo: tokensAfter }) }
   } catch (errore) {
     return { tipo: 'rifiutata', motivo: messaggioErrore(errore) }
   } finally {
@@ -153,7 +156,7 @@ export async function controllaSoglia($: EngineInterface, turno: string, leggiSn
     if (esito.tipo === 'occupata') return
     if (esito.tipo !== 'fatta') {
       // Un turno partito nel frattempo: si riprova alla sua fine, senza dirlo.
-      if (esito.tipo === 'rifiutata' && (isRifiutoPerTurno(esito.motivo) || isPrincipaleOccupata())) return
+      if (esito.tipo === 'rifiutata' && isRifiutoPerTurno(esito.motivo)) return
       diGuasto($, `regia: compattazione ${esito.tipo === 'saltata' ? 'saltata' : 'non riuscita'} (${esito.motivo})`)
 
       return

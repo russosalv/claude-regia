@@ -395,6 +395,7 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   // Ogni compattazione della principale porta le istruzioni della regia (vedi compatta-motore.ts).
+  // Senza `.catch`: `conIstruzioni` non lancia, e un `next` rifiutato dal motore non va chiamato due volte.
   on('session.compact', async ($, e, next) => next(await conIstruzioni($, e)))
 
   on('command.run', { command: 'regia' }, async ($, e) => {

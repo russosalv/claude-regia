@@ -267,10 +267,12 @@ type Finto = {
   pieno: number | undefined
   /** Il riempimento che il motore misura al turno dopo una compattazione. */
   pienoDopo?: number
-  compattazioni: { trigger: string; instructions?: string; agentId?: string }[]
+  /** `trigger` manca nella chiamata di una mod: il motore finto non lo mette. */
+  compattazioni: { trigger?: string; instructions?: string; agentId?: string }[]
   inviati: string[]
   bozza: string
-  rifiuto?: string
+  /** Il motore rifiuta di compattare. */
+  isRifiuto: boolean
 }
 
 const RIASSUNTO = { role: 'user' as const, text: 'riassunto', toolUses: [] }
@@ -280,12 +282,13 @@ const RIASSUNTO = { role: 'user' as const, text: 'riassunto', toolUses: [] }
  * la compattazione (`session.compact`), le superfici, il campo del prompt e l'invio di un prompt.
  */
 function motore(on: On, superfici: string[] = ['terminal'], pieno?: number): Finto {
-  const f: Finto = { pieno, compattazioni: [], inviati: [], bozza: '' }
+  const f: Finto = { pieno, compattazioni: [], inviati: [], bozza: '', isRifiuto: false }
   on('session.surfaces', () => ({ value: superfici as never }))
   on('session.usage', () => ({ value: { startedAt: 0, rateLimits: [], context: { window: 200_000, ...(f.pieno === undefined ? {} : { percent: f.pieno, tokens: f.pieno * 2_000 }) } } }))
   on('session.compact', (_, e) => {
-    if (f.rifiuto !== undefined) throw new Error(f.rifiuto)
-    f.compattazioni.push({ trigger: e.trigger, ...(e.instructions === undefined ? {} : { instructions: e.instructions }), ...(e.agentId === undefined ? {} : { agentId: e.agentId }) })
+    // Un hook del test che lancia viene saltato e la chiamata fallisce nel motore finto: per la mod e un rifiuto.
+    if (f.isRifiuto) throw new Error('rifiutata')
+    f.compattazioni.push({ ...(e.trigger === undefined ? {} : { trigger: e.trigger }), ...(e.instructions === undefined ? {} : { instructions: e.instructions }), ...(e.agentId === undefined ? {} : { agentId: e.agentId }) })
     // Subito dopo il motore non sa il riempimento: lo dice la risposta successiva.
     f.pieno = undefined
 
@@ -298,6 +301,7 @@ function motore(on: On, superfici: string[] = ['terminal'], pieno?: number): Fin
     return { text: e.text } as never
   })
   on('turn.complete', () => ({ text: '' }) as never)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
 
   return f
 }
@@ -321,7 +325,6 @@ test('un turno che finisce al 65% fa una compattazione sola, con le istruzioni d
   f.pieno = 65
   await fineTurno($, amb, 't2')
   expect(f.compattazioni).toHaveLength(1)
-  expect(f.compattazioni[0]?.trigger).toBe('plugin')
   const istruzioni = f.compattazioni[0]?.instructions ?? ''
   // Una volta sola: la chiamata le porta gia, e l'hook della mod non le raddoppia.
   expect(istruzioni.split(INTESTAZIONE)).toHaveLength(2)
@@ -382,28 +385,31 @@ test('la guardia nella mod: se il contesto resta alla soglia non si compatta di 
   expect(f.compattazioni).toHaveLength(2)
 })
 
-test('se il motore rifiuta perche un turno e partito non si dice nulla e si riprova alla fine del turno dopo', async ($, on) => {
+test('un rifiuto del motore si dice una volta; se e perche un turno e partito non si dice e si riprova alla fine del turno dopo', async ($, on) => {
   const amb = ambiente(on)
   const f = motore(on, ['terminal'], 70)
-  f.rifiuto = '$.session.compact: a turn is running (abc); the conversation compacts between turns, so call it from turn.complete or later'
+  f.isRifiuto = true
 
+  // Un rifiuto senza turni in corso e un guasto: si dice, una volta sola, e si riprova a ogni fine di turno.
   await fineTurno($, amb, 't1')
+  await fineTurno($, amb, 't2')
   expect(f.compattazioni).toEqual([])
-  expect(amb.avvisi).toEqual([])
-  expect(amb.store.get(CHIAVE_STATO)).toMatchObject({ turno: 't1' })
+  expect(amb.avvisi.filter(a => a.startsWith('regia: compattazione non riuscita ('))).toHaveLength(1)
+  expect(amb.store.get(CHIAVE_STATO)).toMatchObject({ turno: 't2' })
   expect((amb.store.get(CHIAVE_STATO) as StatoCompatta).ultima).toBeUndefined()
 
-  f.rifiuto = undefined
-  await fineTurno($, amb, 't2')
-  expect(f.compattazioni).toHaveLength(1)
+  // Il turno dopo parte prima che la mod riesca a compattare: il motore rifiuta, e non c'e nulla da dire.
+  amb.avvisi.length = 0
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't3', reason: 'answer' } as never)
+  await $.turn.start({ text: 'vai avanti', turnId: 't4' })
+  await amb.clock?.advance(10)
+  expect(f.compattazioni).toEqual([])
+  expect(amb.avvisi).toEqual([])
 
-  // Un altro guasto invece si dice, una volta.
-  f.pieno = 90
-  f.rifiuto = 'il riassunto non e arrivato'
-  await fineTurno($, amb, 't3')
-  f.pieno = 90
+  f.isRifiuto = false
   await fineTurno($, amb, 't4')
-  expect(amb.avvisi.filter(a => a.includes('non riuscita'))).toEqual(['regia: compattazione non riuscita (il riassunto non e arrivato)'])
+  expect(f.compattazioni).toHaveLength(1)
+  expect(amb.avvisi).toEqual(['regia: contesto compattato, era al 70%; la conversazione ora pesa circa 9k token'])
 })
 
 const evento = (extra: Record<string, unknown>) => ({ trigger: 'manual', messages: [RIASSUNTO], ...extra }) as never
@@ -503,6 +509,7 @@ const comando = ($: Engine, args: string) =>
 test('/regia compact mostra e cambia; now compatta dopo il comando, senza ripresa, e dice se il motore rifiuta', async ($, on) => {
   const amb = ambiente(on, conPiano)
   const f = motore(on, ['terminal'], 43)
+  on('tool.list', () => ({ value: [{ name: 'Agent' }] as never }))
   modalita(amb, 'long')
   const config = () => JSON.parse(amb.scritti.get(CONFIG) ?? '{}') as Record<string, unknown>
 
@@ -530,7 +537,9 @@ test('/regia compact mostra e cambia; now compatta dopo il comando, senza ripres
   expect(f.inviati).toEqual([])
   expect((await comando($, 'compact')).text).toContain('(/regia compact now), il contesto era al 43%')
 
-  f.rifiuto = '$.session.compact: a turn is running (abc); the conversation compacts between turns'
+  // A turno in corso il motore rifiuta: lo si dice.
+  f.isRifiuto = true
+  await $.turn.start({ text: 'vai avanti', turnId: 't9' })
   await comando($, 'compact now')
   await amb.clock?.advance(10)
   expect(amb.avvisi).toContain('regia: il motore non compatta adesso, un turno e in corso: riprova a turno finito')
