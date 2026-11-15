@@ -5,7 +5,7 @@ import type { RegiaDettaglio, RegiaDomanda, RegiaRiga, RegiaScrittura } from '..
 import { avvia, ferma, leggiOra } from './ciclo'
 import { codexAvvia } from './codex-avvia'
 import { codexRiprendi } from './codex-riprendi'
-import { comandoOpzione, leggiArgomentiOpzione } from './comando-opzioni'
+import { comandoEsecutori, comandoOpzione, leggiArgomentiEsecutori, leggiArgomentiOpzione } from './comando-opzioni'
 import { comandoDoctor, rigaModi } from './doctor'
 import { approfondisci, domandaScrivi, rispondiDomanda } from './domande'
 import { comandoProfilo, leggiArgomentiProfilo, leggiProfilo } from './profilo'
@@ -200,7 +200,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'regia',
       description: 'Open the Regia pane and summarize running, queued and finished agents',
-      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | ponytail|codex|qwen [on|off]]',
+      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -403,6 +403,8 @@ export const register: Register = on => {
     if (ponytail !== undefined) return { text: await comandoPonytail($, ponytail) }
     const opzione = leggiArgomentiOpzione(e.args)
     if (opzione !== undefined) return { text: await comandoOpzione($, opzione) }
+    const esecutori = leggiArgomentiEsecutori(e.args)
+    if (esecutori !== undefined) return { text: await comandoEsecutori($, esecutori) }
     const parola = e.args.trim().toLowerCase()
     if (parola === 'swarm' || parola === 'sciame') {
       await giro($)

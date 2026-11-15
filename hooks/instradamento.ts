@@ -1,9 +1,10 @@
 // Modello e sforzo dei subagenti Claude, decisi compito per compito: puro.
 // Nessuna tabella per tipo di agente: a ogni chiamata si guarda il compito vero.
 // Cio che la chiamata, la definizione dell'agente o la config fissano resta com'e.
+// In fondo, allo stesso modo, l'esecutore dei compiti di uno sciame che non lo indicano.
 
 import { SFORZI, sforzoEuristico } from './codex'
-import type { Sforzo } from './codex'
+import type { EsecutoreCli, Sforzo } from './codex'
 
 /** Chi ha deciso il modello di un subagente. */
 export type Provenienza = 'regia' | 'esplicito' | 'ereditato'
@@ -134,4 +135,131 @@ export function gradinoSu(s: { modello?: string; sforzo?: string }): { modello: 
   const i = SCALA_SFORZO.findIndex(x => x === s.sforzo)
 
   return { modello, sforzo: i < 0 ? 'high' : (SCALA_SFORZO[Math.min(i + 1, SCALA_SFORZO.length - 1)] ?? 'high') }
+}
+
+/** Chi puo fare un compito di uno sciame: Claude o una CLI esterna. */
+export type Esecutore = 'claude' | EsecutoreCli
+
+/** Cio che di un compito serve per scegliere chi lo fa. */
+export type CompitoDaAssegnare = { nome: string; prompt: string; scrive: boolean; tipo?: string }
+
+export type SceltaEsecutore = { esecutore: Esecutore; motivo: string }
+
+/** Quanto del prompt di ogni compito vede haiku. */
+export const CARATTERI_COMPITO = 600
+/** Sotto questa lunghezza un prompt non si considera autosufficiente: nel ripiego resta a Claude. */
+export const MINIMO_AUTOSUFFICIENTE = 200
+
+/** I vincoli che decidono senza chiedere a nessuno; `undefined` se il compito resta da assegnare. */
+export function vincoloEsecutore(c: Pick<CompitoDaAssegnare, 'tipo'>, usabili: readonly EsecutoreCli[]): SceltaEsecutore | undefined {
+  if (c.tipo !== undefined) return { esecutore: 'claude', motivo: 'scelto dalla mod: tipo di agente Claude' }
+  if (usabili.length === 0) return { esecutore: 'claude', motivo: 'scelto dalla mod: nessun esterno usabile' }
+
+  return undefined
+}
+
+const A_CHE_SERVE: Readonly<Record<Esecutore, string>> = {
+  claude: 'servono i tool, i server MCP, le skill o i tipi di agente di questa sessione; ricerche brevi; lavoro legato a cio che si e detto nella conversazione.',
+  codex: 'implementazione autonoma di un compito ben specificato, debug, revisione del codice, audit.',
+  qwen: 'modifiche meccaniche o in blocco, leggere e riassumere molto codice, documentazione, test; il piu economico.',
+  copilot: 'implementazione autonoma di un compito ben specificato; un\'altra famiglia di modelli per una seconda implementazione o un secondo parere.',
+}
+
+/** Il prompt per haiku: tutti i compiti da assegnare in una volta, una riga di JSON in risposta. */
+export function promptEsecutori(compiti: readonly CompitoDaAssegnare[], usabili: readonly EsecutoreCli[]): string {
+  const esecutori: readonly Esecutore[] = ['claude', ...usabili]
+
+  return [
+    'Assegna ogni compito di uno sciame di agenti di programmazione a un esecutore, guardando SOLO i compiti qui sotto.',
+    'Esecutori:',
+    ...esecutori.map(e => `- ${e}: ${A_CHE_SERVE[e]}`),
+    'Distribuisci il lavoro: non dare tutto a claude quando un esecutore esterno puo farlo. I compiti autosufficienti vanno a un esecutore esterno.',
+    `Rispondi SOLO con JSON su una riga, una voce per compito: {"<nome del compito>":"<${esecutori.join('|')}>"}`,
+    '',
+    ...compiti.flatMap(c => [`Compito "${c.nome}" (${c.scrive ? 'scrive file' : 'legge soltanto'}):`, c.prompt.trim().slice(0, CARATTERI_COMPITO), '']),
+  ].join('\n').trimEnd()
+}
+
+/** Cio che si legge della risposta: solo i compiti chiesti e solo claude o un esecutore usabile; il resto si ignora. */
+export function leggiEsecutori(testo: string, nomi: readonly string[], usabili: readonly EsecutoreCli[]): Map<string, Esecutore> {
+  const json = /\{[\s\S]*\}/.exec(testo)?.[0]
+  let o: unknown
+  try {
+    o = json === undefined ? undefined : JSON.parse(json)
+  } catch {
+    o = undefined
+  }
+  const ammessi: readonly Esecutore[] = ['claude', ...usabili]
+  const letti = new Map<string, Esecutore>()
+  if (typeof o !== 'object' || o === null || Array.isArray(o)) return letti
+  for (const [nome, valore] of Object.entries(o)) {
+    const esecutore = typeof valore === 'string' ? ammessi.find(e => e === valore.trim().toLowerCase()) : undefined
+    if (nomi.includes(nome) && esecutore !== undefined) letti.set(nome, esecutore)
+  }
+
+  return letti
+}
+
+const ORDINE_SCRIVE: readonly EsecutoreCli[] = ['codex', 'copilot', 'qwen']
+const ORDINE_LEGGE: readonly EsecutoreCli[] = ['qwen', 'codex', 'copilot']
+
+/**
+ * Ripiego senza modello: i compiti autosufficienti (prompt lungo) a rotazione sugli esterni usabili,
+ * ogni volta al meno carico e, a pari carico, al primo dell'ordine che conviene a chi scrive o a chi legge.
+ * I compiti brevi restano a Claude. `carico`: quanti compiti ha gia ciascuno.
+ */
+export function ripiegoEsecutori(
+  compiti: readonly CompitoDaAssegnare[],
+  usabili: readonly EsecutoreCli[],
+  carico: ReadonlyMap<string, number> = new Map(),
+): Map<string, SceltaEsecutore> {
+  const conta = new Map(carico)
+  const scelte = new Map<string, SceltaEsecutore>()
+  for (const c of compiti) {
+    const ordine = (c.scrive ? ORDINE_SCRIVE : ORDINE_LEGGE).filter(e => usabili.includes(e))
+    const primo = ordine[0]
+    if (primo === undefined || c.prompt.trim().length < MINIMO_AUTOSUFFICIENTE) {
+      scelte.set(c.nome, { esecutore: 'claude', motivo: `ripiego: ${primo === undefined ? 'nessun esterno usabile' : 'compito breve'}` })
+      continue
+    }
+    // `reduce` tiene il primo fra i pari: l'ordine di preferenza rompe la parita.
+    const scelto = ordine.reduce((meno, e) => ((conta.get(e) ?? 0) < (conta.get(meno) ?? 0) ? e : meno), primo)
+    conta.set(scelto, (conta.get(scelto) ?? 0) + 1)
+    scelte.set(c.nome, { esecutore: scelto, motivo: 'ripiego: a rotazione' })
+  }
+
+  return scelte
+}
+
+/** I compiti che nessun vincolo decide: quelli da chiedere ad haiku. */
+export function daChiedere<C extends CompitoDaAssegnare>(compiti: readonly C[], usabili: readonly EsecutoreCli[]): C[] {
+  return compiti.filter(c => vincoloEsecutore(c, usabili) === undefined)
+}
+
+/**
+ * L'esecutore di ogni compito che non lo indica: prima i vincoli, poi la risposta di haiku
+ * (`undefined` se non ha risposto o non c'era nulla da chiedere), poi il ripiego per chi resta.
+ */
+export function assegnaEsecutori(
+  compiti: readonly CompitoDaAssegnare[],
+  usabili: readonly EsecutoreCli[],
+  risposta: string | undefined,
+  carico: ReadonlyMap<string, number> = new Map(),
+): Map<string, SceltaEsecutore> {
+  const scelte = new Map<string, SceltaEsecutore>()
+  for (const c of compiti) {
+    const vincolo = vincoloEsecutore(c, usabili)
+    if (vincolo !== undefined) scelte.set(c.nome, vincolo)
+  }
+  const liberi = compiti.filter(c => !scelte.has(c.nome))
+  const letti = risposta === undefined ? new Map<string, Esecutore>() : leggiEsecutori(risposta, liberi.map(c => c.nome), usabili)
+  const conta = new Map(carico)
+  for (const [nome, esecutore] of letti) {
+    scelte.set(nome, { esecutore, motivo: 'scelto dalla mod: dal compito' })
+    if (esecutore !== 'claude') conta.set(esecutore, (conta.get(esecutore) ?? 0) + 1)
+  }
+  const rimasti = liberi.filter(c => !letti.has(c.nome))
+  for (const [nome, scelta] of ripiegoEsecutori(rimasti, usabili, conta)) scelte.set(nome, scelta)
+
+  return scelte
 }

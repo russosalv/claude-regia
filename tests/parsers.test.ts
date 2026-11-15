@@ -163,6 +163,7 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     attesaMinuti: 45,
     controlloMinuti: [15, 30, 60],
     quickModello: 'sonnet',
+    esecutori: ['codex', 'qwen', 'copilot'],
   })
   expect(ok.avvisi).toEqual([])
 

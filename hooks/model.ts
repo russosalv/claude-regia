@@ -53,7 +53,7 @@ export type InputSnapshot = {
   /** `$.session.id()`. */
   sessioneId?: string
   /** Compiti di uno sciame di questa sessione che aspettano di partire. */
-  attesaSciame?: readonly { sciame: string; nome: string; esecutore: string; isBloccato: boolean }[]
+  attesaSciame?: readonly { sciame: string; nome: string; esecutore: string; isBloccato: boolean; /** Chi ha scelto l'esecutore: `indicato`, `mod`, `ripiego`. */ chi?: string }[]
   /** Subagenti conclusi ricordati in `$.store`. */
   ricordiAgenti?: readonly RicordoAgente[]
   /** Modello, motivo e token dei subagenti, per id (`regia.agenti.<sessione>`). */
@@ -291,7 +291,7 @@ function costruisciVista(
     fonte: 'registro',
     esecutore: c.esecutore,
     stato: c.isBloccato ? 'bloccato' : 'scaletta',
-    note: `sciame ${c.sciame}`,
+    note: c.chi === undefined ? `sciame ${c.sciame}` : `sciame ${c.sciame} · ${c.chi}`,
   }))
   const scaletta = [...sciame, ...perStato('scaletta', 'bloccato')]
 

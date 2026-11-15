@@ -1,5 +1,7 @@
 // Registro della scaletta e config opzionale: validazione pura.
 
+import { ESECUTORI_CLI } from './codex'
+import type { EsecutoreCli } from './codex'
 import { espandiTilde } from './parsers'
 
 export type StatoRegistro = 'scaletta' | 'in_corso' | 'fatto' | 'bloccato'
@@ -54,6 +56,8 @@ export type ConfigRegia = {
   controlloMinuti: number[]
   /** Il modello della principale in modalita quick (`/regia quick`). */
   quickModello: string
+  /** Gli esecutori esterni che la mod puo usare (`/regia executors`); lista vuota: lavora solo Claude. */
+  esecutori: EsecutoreCli[]
 }
 
 export const AGGIORNAMENTO_PREDEFINITO_SEC = 15
@@ -225,6 +229,18 @@ function campoTesto(grezzo: unknown, nome: string, predefinito?: string): Campo<
   return { valore: predefinito, avvisi: [`config.json: "${nome}" non e un nome valido`] }
 }
 
+/** Gli esecutori esterni accesi: i nomi sconosciuti si tolgono, e si dice quali. */
+function campoEsecutori(grezzo: unknown): Campo<EsecutoreCli[]> {
+  if (grezzo === undefined) return { valore: [...ESECUTORI_CLI], avvisi: [] }
+  const validi = ESECUTORI_CLI.join(', ')
+  if (!Array.isArray(grezzo)) return { valore: [...ESECUTORI_CLI], avvisi: [`config.json: "esecutori" deve essere una lista fra ${validi}`] }
+  const nomi = grezzo.map(n => (typeof n === 'string' ? n.trim().toLowerCase() : n))
+  const ignoti = nomi.filter(n => !ESECUTORI_CLI.some(e => e === n))
+  const avvisi = ignoti.length === 0 ? [] : [`config.json: in "esecutori" tolti i nomi sconosciuti ${ignoti.map(n => JSON.stringify(n)).join(', ')} (validi: ${validi})`]
+
+  return { valore: ESECUTORI_CLI.filter(e => nomi.includes(e)), avvisi }
+}
+
 /** I log di `codex_avvia`, `qwen_avvia` e `copilot_avvia` in coda ai log scelti, una volta sola. */
 function conLogRegia(logs: readonly string[], home: string): string[] {
   const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA, LOG_COPILOT_REGIA].map(l => `${home}/${l}`)
@@ -253,6 +269,7 @@ export function parseConfig(
     attesaMinuti: ATTESA_PREDEFINITA_MIN,
     controlloMinuti: [...CONTROLLO_PREDEFINITO_MIN],
     quickModello: QUICK_MODELLO_PREDEFINITO,
+    esecutori: [...ESECUTORI_CLI],
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
     return { config: predefinita, avvisi: ['config.json: atteso un oggetto'] }
@@ -275,6 +292,7 @@ export function parseConfig(
   const attesa = campoAttesa(o.attesaMinuti)
   const controllo = campoControllo(o.controlloMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
+  const esecutori = campoEsecutori(o.esecutori)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
     aggiornamentoSecondi: secondi.valore ?? predefinita.aggiornamentoSecondi,
@@ -291,10 +309,11 @@ export function parseConfig(
     attesaMinuti: attesa.valore,
     controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
+    esecutori: esecutori.valore,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
     ...(copilotModello.valore === undefined ? {} : { copilotModello: copilotModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

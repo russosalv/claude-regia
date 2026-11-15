@@ -40,6 +40,28 @@ test('le regole: long orchestra e fa da se le cose rapide, quick lavora da sola;
   expect(TESTI_ORCHESTRA.quick).not.toContain('domanda_scrivi')
 })
 
+test('gli esecutori esterni: long li usa senza che la persona lo chieda e non indica l\'esecutore, medio li puo usare, quick resta sola', () => {
+  const riga = (profilo: 'long' | 'medio', pezzo: string) => TESTI_ORCHESTRA[profilo].split('\n').find(r => r.includes(pezzo)) ?? ''
+
+  // Lo sciame: da due compiti indipendenti, senza `esecutore`, che sceglie la mod.
+  const sciame = riga('long', '`mcp__regia__sciame_avvia`')
+  expect(sciame).toContain('Due o piu compiti indipendenti')
+  expect(sciame).toContain('Non indicare `esecutore`: per ogni compito lo sceglie la mod fra Claude e gli esecutori esterni accesi, come fa per modello e sforzo.')
+  // I tre esterni sono della squadra; i tool diretti solo se la persona nomina l'esecutore.
+  const squadra = riga('long', 'fanno parte della squadra')
+  expect(squadra).toContain('Gli esecutori esterni (Codex, Qwen Code, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda.')
+  expect(squadra).toContain('Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito')
+  for (const tool of ['codex_avvia', 'qwen_avvia', 'copilot_avvia']) expect(squadra).toContain(`\`mcp__regia__${tool}\``)
+  expect(squadra).toContain('servono quando la persona nomina l\'esecutore')
+  expect(TESTI_ORCHESTRA.long).not.toContain('fuori dalla sessione')
+
+  const medio = riga('medio', '`mcp__regia__sciame_avvia`')
+  expect(medio).toContain('senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).')
+  // Quick lavora da sola: nessuno sciame e nessun esecutore nella sua regola.
+  expect(TESTI_ORCHESTRA.quick).not.toContain('esecutor')
+  expect(TESTI_ORCHESTRA.quick).not.toContain('sciame')
+})
+
 test('una domanda nuova vuole titolo e contesto, tiene 4 opzioni, si chiude; le aperte sono della sessione', () => {
   expect(conDomanda([], { id: 'db', stato: 'aperta', titolo: 'Quale database?' }, 'S', 10)).toBe('la domanda "db" e nuova: servono titolo e contesto')
   const aperta = conDomanda([], { id: 'db', stato: 'aperta', titolo: 'Quale database?', contesto: 'Serve per lo storico.', opzioni: ['a', 'b', 'c', 'd', 'e'], raccomandazione: 'a' }, 'S', 10)

@@ -2,6 +2,7 @@
 
 import type { EngineInterface } from 'claude-code'
 
+import { leggiCli, rigaEsecutori, statoEsecutori, versioneDi } from './esecutori'
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
 import { NOME_PROFILO, PROFILO_PREDEFINITO, leggiProfilo } from './profilo'
@@ -70,23 +71,13 @@ export function testoDoctor(d: DatiDoctor): string {
     `Codex: ${d.codex === undefined ? 'NON trovato — codex_avvia e i compiti Codex non partiranno' : `${d.codex}, modello ${c.codexModello ?? 'deciso da Codex'}`}.`,
     `Qwen: ${d.qwen === undefined ? 'NON trovato — qwen_avvia e i compiti Qwen non partiranno' : d.qwen}.`,
     `Copilot: ${d.copilot === undefined ? 'NON trovato — copilot_avvia e i compiti Copilot non partiranno' : `${d.copilot}, modello ${c.copilotModello ?? 'deciso da Copilot'}`}.`,
+    rigaEsecutori(statoEsecutori(c.esecutori, d)),
     `Posta dai Codex: ${d.python === undefined ? 'python3 NON trovato — la CLI posta non funziona' : d.python}.`,
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
     '',
-    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia models on|off, /regia savings on|off, /regia wake on|off.',
+    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia models on|off, /regia savings on|off, /regia wake on|off, /regia executors codex|qwen|copilot on|off.',
   ].join('\n')
-}
-
-/** La prima riga di `<comando> --version`; un comando che manca non e un errore. */
-async function versioneDi($: EngineInterface, comando: string): Promise<string | undefined> {
-  try {
-    const r = await $.process.run([comando, '--version'], { timeoutMs: 5_000 })
-
-    return r.exitCode === 0 ? r.stdout.trim().split('\n')[0] : undefined
-  } catch {
-    return undefined
-  }
 }
 
 export async function versioneMod($: EngineInterface): Promise<string | undefined> {
@@ -105,7 +96,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
     const home = await leggiHome($)
     if (home === undefined) return 'regia doctor: HOME non definita, non trovo la config.'
     const percorsoConfig = `${home}/.claude/regia/config.json`
-    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, codex, qwen, copilot, python, profilo] = await Promise.all([
+    const [versione, config, isConfigPresente, superfici, strumenti, isPonytail, sciamiAttivi, repo, cli, python, profilo] = await Promise.all([
       versioneMod($),
       leggiConfig($, home),
       $.fs.exists(percorsoConfig),
@@ -114,9 +105,8 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       isPonytailAttivo($),
       contaSciamiAttivi($),
       $.session.repo().catch(() => undefined),
-      versioneDi($, 'codex'),
-      versioneDi($, 'qwen'),
-      versioneDi($, 'copilot'),
+      // Senza la risposta ricordata: il doctor dice che cosa c'e adesso.
+      leggiCli($, true),
       versioneDi($, 'python3'),
       leggiProfilo($),
     ])
@@ -133,9 +123,7 @@ export async function comandoDoctor($: EngineInterface): Promise<string> {
       isPonytail,
       sciamiAttivi,
       repo: repo?.root,
-      codex,
-      qwen,
-      copilot,
+      ...cli,
       python,
       profilo,
     })

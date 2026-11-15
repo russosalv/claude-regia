@@ -10,6 +10,7 @@ import {
   componiPrompt,
   permessoQwen,
   leggiSforzoClassificato,
+  messaggioSpento,
   percorsiLavoro,
   promptClassificaSforzo,
   sforzoEuristico,
@@ -24,11 +25,15 @@ import { paragrafoPosta, percorsiPosta } from './posta'
 
 export const NOME_TOOL_AVVIA = 'codex_avvia'
 
+/** I tre tool diretti servono a chi nomina l'esecutore: altrimenti lo sceglie la mod, nello sciame. */
+const PER_CHI_LO_CHIEDE = 'Usalo quando la persona chiede proprio questo esecutore; altrimenti lancia il compito con sciame_avvia senza `esecutore` e lo sceglie la mod. Rifiuta un esecutore spento in config (/regia executors).'
+
 export const DESCRIZIONE_AVVIA = [
   'Lancia un lavoro Codex CLI (codex exec) in background in un worktree, staccato dalla sessione: sopravvive se la sessione si chiude.',
   'Scrive prompt, log ed esito in ~/.claude/regia/codex/<nome>/ e registra inizio e fine in ~/.claude/regia/codex/esegui.log; il pane Regia lo mostra.',
   'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Se non dai lo sforzo lo sceglie la mod.',
   'Risponde subito con pid e percorsi: non aspetta la fine. Rifiuta un nome gia in corso.',
+  PER_CHI_LO_CHIEDE,
 ].join(' ')
 
 export const NOME_TOOL_QWEN_AVVIA = 'qwen_avvia'
@@ -38,6 +43,7 @@ export const DESCRIZIONE_QWEN_AVVIA = [
   'Scrive prompt, log ed esito in ~/.claude/regia/qwen/<nome>/ e registra inizio e fine in ~/.claude/regia/qwen/esegui.log; il pane Regia lo mostra come i Codex.',
   'Con scrive=true (predefinito) Qwen puo cambiare file e lanciare comandi (permesso auto); con scrive=false solo leggere (permesso default).',
   'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
+  PER_CHI_LO_CHIEDE,
 ].join(' ')
 
 export const NOME_TOOL_COPILOT_AVVIA = 'copilot_avvia'
@@ -47,6 +53,7 @@ export const DESCRIZIONE_COPILOT_AVVIA = [
   'Scrive prompt, log ed esito in ~/.claude/regia/copilot/<nome>/ e registra inizio e fine in ~/.claude/regia/copilot/esegui.log; il pane Regia lo mostra come i Codex.',
   'Con scrive=true (predefinito) Copilot puo cambiare file e lanciare comandi (--allow-all-tools --allow-all-paths); con scrive=false solo leggere (--deny-tool=write, nessun permesso in piu).',
   'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
+  PER_CHI_LO_CHIEDE,
 ].join(' ')
 
 const TOOL_AVVIA: Readonly<Record<EsecutoreCli, string>> = { codex: NOME_TOOL_AVVIA, qwen: NOME_TOOL_QWEN_AVVIA, copilot: NOME_TOOL_COPILOT_AVVIA }
@@ -204,6 +211,7 @@ export async function codexAvvia(
     const p = await prepara($, argomenti)
     if (typeof p === 'string') return { deny: `${tool}: ${p}` }
     const config = (await leggiConfig($, p.home)).dati
+    if (!config.esecutori.includes(esecutore)) return { deny: `${tool}: ${messaggioSpento(esecutore)}` }
     const daConfig = esecutore === 'codex' ? config.codexModello : esecutore === 'copilot' ? config.copilotModello : undefined
     const modello = p.richiesta.modello ?? daConfig
     const sforzo: Scelta = esecutore === 'codex' ? await scegliSforzo($, p.richiesta.prompt, p.richiesta.sforzo) : sforzoQwen(p.richiesta.sforzo)

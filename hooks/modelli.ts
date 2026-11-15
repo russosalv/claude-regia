@@ -36,25 +36,32 @@ async function cartelleAgenti($: EngineInterface, home: string, cwd: string | un
   return [...new Set([cwd, repo?.root, sessione, home].filter((c): c is string => c !== undefined && c !== ''))]
 }
 
+/**
+ * Una domanda breve ad haiku, fuori dalla conversazione: il testo, o perche non c'e.
+ * Non lancia: chi chiama ha sempre un ripiego.
+ */
+export async function chiediHaiku(
+  $: EngineInterface,
+  prompt: string,
+  maxTokens: number,
+  timeoutMs = ATTESA_CLASSIFICA_MS,
+): Promise<{ testo?: string; errore?: string }> {
+  try {
+    const r = await $.model.complete({ model: 'haiku', prompt, maxTokens, effort: 'low', timeoutMs })
+
+    return r.isAnswered ? { testo: r.text } : { errore: r.reason }
+  } catch (errore) {
+    return { errore: messaggioErrore(errore) }
+  }
+}
+
 /** Haiku guarda il compito e sceglie; se non risponde, un'euristica e sonnet. */
 export async function classifica(
   $: EngineInterface,
   d: Extract<Decisione, { tipo: 'classifica' }>,
   c: { descrizione: string; prompt: string },
 ): Promise<SceltaModello> {
-  try {
-    const r = await $.model.complete({
-      model: 'haiku',
-      prompt: promptClassifica(c.descrizione, c.prompt),
-      maxTokens: 60,
-      effort: 'low',
-      timeoutMs: ATTESA_CLASSIFICA_MS,
-    })
-
-    return sceltaClassificata(d, c.prompt, r.isAnswered ? { testo: r.text } : { errore: r.reason })
-  } catch (errore) {
-    return sceltaClassificata(d, c.prompt, { errore: messaggioErrore(errore) })
-  }
+  return sceltaClassificata(d, c.prompt, await chiediHaiku($, promptClassifica(c.descrizione, c.prompt), 60))
 }
 
 type ChiamataAgent = { tipo: string; model?: string; effort?: string; descrizione: string; prompt: string; cwd?: string }

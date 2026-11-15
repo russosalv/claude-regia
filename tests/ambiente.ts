@@ -33,6 +33,8 @@ export type OpzioniAmbiente = {
   file?: Record<string, string>
   agenti?: () => unknown[]
   senzaRepo?: boolean
+  /** Le CLI che su questo PC finto non ci sono: `<cli> --version` risponde 127. */
+  cliAssenti?: readonly string[]
 }
 
 export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
@@ -88,6 +90,9 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   })
   on('process.run', (_, e) => {
     stato.lanci.push({ argv: e.argv, env: e.init?.env })
+    if (e.argv[1] === '--version' && opzioni.cliAssenti?.includes(e.argv[0] ?? '') === true) {
+      return { value: { exitCode: 127, stdout: '', stderr: 'command not found', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     const stdout = e.argv[0] === 'ps' ? PS
       : e.argv[0] === 'bash' ? '4242\n'
         : e.argv[0] === 'tail' ? (file.get(e.argv[e.argv.length - 1] ?? '') ?? '')

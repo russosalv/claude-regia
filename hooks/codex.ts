@@ -12,6 +12,9 @@ export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen', 'copilot
 /** Come la mod chiama ogni CLI nei suoi messaggi. */
 export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen', copilot: 'Copilot' }
 
+/** Il rifiuto di un esecutore tolto da `esecutori` in config: vale per i tool diretti e per lo sciame. */
+export const messaggioSpento = (esecutore: EsecutoreCli): string => `esecutore ${esecutore} spento in config: /regia executors ${esecutore} on`
+
 /** Argomenti del tool come li manda il modello, gia controllati. */
 export type RichiestaCodex = {
   nome: string
