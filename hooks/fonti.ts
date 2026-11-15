@@ -208,6 +208,8 @@ export function pidConSessioneDaPs(uscita: string, sessioneId: string): Set<numb
 const CHIAVE_MEMORIA = 'regia.sessione.'
 /** La modalita e la presenza della persona per sessione (`profilo.ts`). */
 export const CHIAVE_PROFILO = 'regia.profilo.'
+/** L'ultima compattazione fatta dalla mod, per sessione (`compatta-motore.ts`). */
+export const CHIAVE_COMPATTA = 'regia.compatta.'
 const SCADENZA_MEMORIA_MS = 30 * 24 * 3600 * 1000
 
 function nomiDaMemoria(grezzo: unknown): string[] {
@@ -248,7 +250,7 @@ export async function scriviMemoria(
 /** Toglie dallo store le memorie (lavori e agenti) di sessioni ferme da oltre 30 giorni. */
 export async function potaMemorie($: EngineInterface, oraMs: number): Promise<string[]> {
   try {
-    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI) || k.startsWith(CHIAVE_PROFILO))
+    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI) || k.startsWith(CHIAVE_PROFILO) || k.startsWith(CHIAVE_COMPATTA))
     await Promise.all(
       chiavi.map(async chiave => {
         const voce = (await $.store.get(chiave)) as { aggiornatoMs?: unknown } | { creatoMs?: unknown }[] | undefined

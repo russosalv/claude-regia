@@ -58,6 +58,10 @@ export type ConfigRegia = {
   quickModello: string
   /** Gli esecutori esterni che la mod puo usare (`/regia executors`); lista vuota: lavora solo Claude. */
   esecutori: EsecutoreCli[]
+  /** La mod compatta la principale oltre la soglia e da le sue istruzioni a ogni compattazione (`/regia compact on|off`). */
+  compatta: boolean
+  /** Riempimento del contesto, in percento, oltre cui la mod compatta a fine turno (`/regia compact <numero>`). */
+  compattaSoglia: number
 }
 
 export const AGGIORNAMENTO_PREDEFINITO_SEC = 15
@@ -182,6 +186,20 @@ export const STALLO_PREDEFINITO_MIN = 30
 export const ATTESA_PREDEFINITA_MIN = 45
 export const CONTROLLO_PREDEFINITO_MIN: readonly number[] = [15, 30, 60]
 export const QUICK_MODELLO_PREDEFINITO = 'sonnet'
+export const SOGLIA_COMPATTA_PREDEFINITA = 60
+export const SOGLIA_COMPATTA_MINIMA = 30
+export const SOGLIA_COMPATTA_MASSIMA = 90
+
+/** Vero per una soglia di compattazione valida: un intero fra la minima e la massima. */
+export const isSogliaCompatta = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isInteger(n) && n >= SOGLIA_COMPATTA_MINIMA && n <= SOGLIA_COMPATTA_MASSIMA
+
+function campoSogliaCompatta(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: SOGLIA_COMPATTA_PREDEFINITA, avvisi: [] }
+  if (isSogliaCompatta(grezzo)) return { valore: grezzo, avvisi: [] }
+
+  return { valore: SOGLIA_COMPATTA_PREDEFINITA, avvisi: [`config.json: "compattaSoglia" deve essere un intero da ${SOGLIA_COMPATTA_MINIMA} a ${SOGLIA_COMPATTA_MASSIMA}`] }
+}
 
 function campoStallo(grezzo: unknown): Campo<number> {
   if (grezzo === undefined) return { valore: STALLO_PREDEFINITO_MIN, avvisi: [] }
@@ -270,6 +288,8 @@ export function parseConfig(
     controlloMinuti: [...CONTROLLO_PREDEFINITO_MIN],
     quickModello: QUICK_MODELLO_PREDEFINITO,
     esecutori: [...ESECUTORI_CLI],
+    compatta: true,
+    compattaSoglia: SOGLIA_COMPATTA_PREDEFINITA,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
     return { config: predefinita, avvisi: ['config.json: atteso un oggetto'] }
@@ -293,6 +313,8 @@ export function parseConfig(
   const controllo = campoControllo(o.controlloMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
   const esecutori = campoEsecutori(o.esecutori)
+  const compatta = campoBooleano(o.compatta, 'compatta', true)
+  const soglia = campoSogliaCompatta(o.compattaSoglia)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
     aggiornamentoSecondi: secondi.valore ?? predefinita.aggiornamentoSecondi,
@@ -310,10 +332,12 @@ export function parseConfig(
     controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     esecutori: esecutori.valore,
+    compatta: compatta.valore,
+    compattaSoglia: soglia.valore,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
     ...(copilotModello.valore === undefined ? {} : { copilotModello: copilotModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori, compatta, soglia].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

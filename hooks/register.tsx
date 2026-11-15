@@ -6,6 +6,8 @@ import { avvia, ferma, leggiOra } from './ciclo'
 import { codexAvvia } from './codex-avvia'
 import { codexRiprendi } from './codex-riprendi'
 import { comandoEsecutori, comandoOpzione, leggiArgomentiEsecutori, leggiArgomentiOpzione } from './comando-opzioni'
+import { leggiArgomentiCompatta } from './compatta'
+import { comandoCompatta, conIstruzioni, dopoTurno, notaPrompt } from './compatta-motore'
 import { comandoDoctor, rigaModi } from './doctor'
 import { approfondisci, domandaScrivi, rispondiDomanda } from './domande'
 import { comandoProfilo, leggiArgomentiProfilo, leggiProfilo } from './profilo'
@@ -200,7 +202,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'regia',
       description: 'Open the Regia pane and summarize running, queued and finished agents',
-      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
+      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | compact [on|off|30-90|now] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -214,6 +216,7 @@ export const register: Register = on => {
   on('prompt.submit', ($, e, next) => {
     // Dopo un ricaricamento a caldo session.start non scatta di nuovo.
     void accendi($)
+    notaPrompt()
 
     return next(e)
   })
@@ -385,9 +388,14 @@ export const register: Register = on => {
     if (e.agentId === undefined) notaFinePrincipale(await $.clock.now(), e.reason)
     await contaToken($, e)
     if (e.agentId !== undefined) await notaFine($, e.agentId, e.reason, e.answer)
+    // Il contesto della principale alla soglia: si compatta dopo l'hook, fra un turno e l'altro.
+    if (e.agentId === undefined) dopoTurno($, e, () => leggiOra($).then(() => read($, snapshot)))
 
     return esito
   }).catch(($, e, next) => next(e))
+
+  // Ogni compattazione della principale porta le istruzioni della regia (vedi compatta-motore.ts).
+  on('session.compact', async ($, e, next) => next(await conIstruzioni($, e)))
 
   on('command.run', { command: 'regia' }, async ($, e) => {
     if (e.args.trim().toLowerCase() === 'doctor') return { text: await comandoDoctor($) }
@@ -405,6 +413,8 @@ export const register: Register = on => {
     if (opzione !== undefined) return { text: await comandoOpzione($, opzione) }
     const esecutori = leggiArgomentiEsecutori(e.args)
     if (esecutori !== undefined) return { text: await comandoEsecutori($, esecutori) }
+    const compatta = leggiArgomentiCompatta(e.args)
+    if (compatta !== undefined) return { text: await comandoCompatta($, compatta) }
     const parola = e.args.trim().toLowerCase()
     if (parola === 'swarm' || parola === 'sciame') {
       await giro($)

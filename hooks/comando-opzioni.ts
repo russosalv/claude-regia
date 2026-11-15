@@ -43,7 +43,7 @@ export function leggiArgomentiOpzione(args: string): ArgomentiOpzione | undefine
 }
 
 /** La config con una chiave cambiata e il resto com'era. */
-export async function scriviChiave($: EngineInterface, home: string, chiave: string, valore: boolean | string | readonly string[]): Promise<void> {
+export async function scriviChiave($: EngineInterface, home: string, chiave: string, valore: boolean | number | string | readonly string[]): Promise<void> {
   const percorso = `${home}/.claude/regia/config.json`
   let radice: Record<string, unknown> = {}
   if (await $.fs.exists(percorso)) {

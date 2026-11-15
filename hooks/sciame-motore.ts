@@ -474,9 +474,13 @@ export async function sciameFerma($: EngineInterface, grezzi: unknown): Promise<
   return typeof s === 'string' ? { deny: `sciame_ferma: ${s}` } : { result: descrivi(s) }
 }
 
-/** Gli sciami della sessione non ancora finiti. */
+/** Gli sciami della sessione non ancora finiti: in corsa o in attesa. */
+export async function sciamiAttivi($: EngineInterface): Promise<Sciame[]> {
+  return (await leggi($, await $.session.id())).filter(s => !s.isAvvisato)
+}
+
 export async function contaSciamiAttivi($: EngineInterface): Promise<number> {
-  return (await leggi($, await $.session.id())).filter(s => !s.isAvvisato).length
+  return (await sciamiAttivi($)).length
 }
 
 /** I compiti in attesa, per la scaletta del pane. */

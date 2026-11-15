@@ -38,7 +38,8 @@ export type StatoPrincipale = { isOccupata: boolean; fineMs: number; motivo?: st
 export type Sveglie = { impronta: string; tentativi: number; ultimaMs: number; isEsaurita: boolean; controlli: number }
 
 
-const isAgente = (r: RegiaRiga) => r.fonte === 'claude' || r.fonte === 'codex'
+/** Una riga del pane che e un agente al lavoro (Claude, Codex, Qwen, Copilot) e non una voce del piano. */
+export const isAgente = (r: RegiaRiga): boolean => r.fonte === 'claude' || r.fonte === 'codex'
 
 /** Le voci del piano ancora da chiudere: scaletta e in corso del registro. */
 export function vociAperte(s: RegiaSnapshot): RegiaRiga[] {
@@ -146,6 +147,8 @@ let finitiVisti: Set<string> | undefined
 let finitiNuovi: string[] = []
 /** La regia ha chiesto un turno e la principale non l'ha ancora iniziato. */
 let isSvegliaInAttesa = false
+/** La mod sta compattando la conversazione (`compatta-motore.ts`): niente sveglie finche non ha finito. */
+let isCompattazione = false
 
 export function notaInizioPrincipale(): void {
   principale.isOccupata = true
@@ -158,6 +161,14 @@ export function notaFinePrincipale(oraMs: number, motivo: string): void {
   principale.fineMs = oraMs
   principale.motivo = motivo
 }
+
+/** La compattazione fatta dalla mod inizia o finisce: nel mezzo la sorveglianza non manda turni. */
+export function notaCompattazione(isInCorso: boolean): void {
+  isCompattazione = isInCorso
+}
+
+/** Vero se la principale ha un turno in corso, o gliene e stato appena chiesto uno. */
+export const isPrincipaleOccupata = (): boolean => principale.isOccupata
 
 export function notaPassoAgente(agentId: string, oraMs: number): void {
   ultimoPasso.set(agentId, oraMs)
@@ -264,14 +275,15 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
   return righe
 }
 
-async function sveglia($: EngineInterface, testo: string): Promise<void> {
+/** Chiede un turno alla principale. Anche la ripresa dopo una compattazione passa di qui, cosi non si somma a una sveglia. */
+export async function sveglia($: EngineInterface, testo: string, nome = 'sveglia'): Promise<void> {
   // Una sveglia alla volta: la prossima solo dopo che la principale ha girato.
   principale.isOccupata = true
   isSvegliaInAttesa = true
   await $.prompt.submit({ text: testo }).catch(errore => {
     principale.isOccupata = false
     isSvegliaInAttesa = false
-    $.ui.toast(`regia: sveglia non riuscita (${messaggioErrore(errore)})`)
+    $.ui.toast(`regia: ${nome} non riuscita (${messaggioErrore(errore)})`)
   })
 }
 
@@ -318,8 +330,10 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     fineVista = principale.fineMs
     aggiornaFiniti(s.viste.sessione.fatti.filter(isAgente), principale.isOccupata || isTurnoNuovo)
     const posta = postaNonLetta(s, principale.fineMs)
+    // Mentre la mod compatta la principale non e libera: la ripresa, se serve, la manda la compattazione.
+    const isOccupata = principale.isOccupata || isCompattazione
     const decisa = decidiSveglia({
-      oraMs, principale, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo,
+      oraMs, principale: { ...principale, isOccupata }, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo,
       novita: finitiNuovi.length + posta, controlloMinuti: config.controlloMinuti,
     })
     if (decisa.sveglie.isEsaurita && !sveglie.isEsaurita) {
@@ -327,7 +341,7 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
       void notifica($, `Il piano e fermo: ${MASSIMO_SVEGLIE} sveglie senza progressi, serve te.`, 'piano')
     }
     if (!decisa.isDovuta) sveglie = decisa.sveglie
-    if (principale.isOccupata || principale.motivo === 'aborted' || (!decisa.isDovuta && daDire.length === 0)) return
+    if (isOccupata || principale.motivo === 'aborted' || (!decisa.isDovuta && daDire.length === 0)) return
     // La persona sta scrivendo: non le si passa davanti (la sveglia non conta).
     if ((await $.prompt.read()).text.trim() !== '') return
     sveglie = decisa.sveglie
