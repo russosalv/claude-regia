@@ -5,7 +5,7 @@ import type { RegiaDettaglio, RegiaDomanda, RegiaRiga, RegiaScrittura } from '..
 import { avvia, ferma, leggiOra } from './ciclo'
 import { codexAvvia } from './codex-avvia'
 import { codexRiprendi } from './codex-riprendi'
-import { comandoEsecutori, comandoOpzione, leggiArgomentiEsecutori, leggiArgomentiOpzione } from './comando-opzioni'
+import { comandoEsecutori, comandoOpzione, comandoSquadra, leggiArgomentiEsecutori, leggiArgomentiOpzione, leggiArgomentiSquadra } from './comando-opzioni'
 import { leggiArgomentiCompatta } from './compatta'
 import { comandoCompatta, conIstruzioni, dopoTurno, notaPrompt } from './compatta-motore'
 import { comandoDoctor, rigaModi } from './doctor'
@@ -202,7 +202,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'regia',
       description: 'Open the Regia pane and summarize running, queued and finished agents',
-      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | compact [on|off|30-90|now] | models [on|off] | orchestra [strict|guide|off] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
+      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | compact [on|off|30-90|now] | models [on|off] | orchestra [strict|guide|off] | team [claude|mixed|external|0-100] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -414,6 +414,8 @@ export const register: Register = on => {
     if (opzione !== undefined) return { text: await comandoOpzione($, opzione) }
     const esecutori = leggiArgomentiEsecutori(e.args)
     if (esecutori !== undefined) return { text: await comandoEsecutori($, esecutori) }
+    const squadra = leggiArgomentiSquadra(e.args)
+    if (squadra !== undefined) return { text: await comandoSquadra($, squadra) }
     const compatta = leggiArgomentiCompatta(e.args)
     if (compatta !== undefined) return { text: await comandoCompatta($, compatta) }
     const parola = e.args.trim().toLowerCase()

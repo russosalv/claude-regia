@@ -25,8 +25,8 @@ import { paragrafoPosta, percorsiPosta } from './posta'
 
 export const NOME_TOOL_AVVIA = 'codex_avvia'
 
-/** I tre tool diretti servono a chi nomina l'esecutore: altrimenti lo sceglie la mod, nello sciame. */
-const PER_CHI_LO_CHIEDE = 'Usalo quando la persona chiede proprio questo esecutore; altrimenti lancia il compito con sciame_avvia senza `esecutore` e lo sceglie la mod. Rifiuta un esecutore spento in config (/regia executors).'
+/** I tre tool diretti servono a chi nomina l'esecutore: altrimenti chi lavora lo decide la squadra impostata. */
+const PER_CHI_LO_CHIEDE = 'Usalo quando la persona chiede proprio questo esecutore; altrimenti il compito va a un subagente (Agent) o in uno sciame senza `esecutore`, e chi lo fa lo decide la mod secondo la squadra impostata (/regia team). Rifiuta un esecutore spento in config (/regia executors).'
 
 export const DESCRIZIONE_AVVIA = [
   'Lancia un lavoro Codex CLI (codex exec) in background in un worktree, staccato dalla sessione: sopravvive se la sessione si chiude.',

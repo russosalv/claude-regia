@@ -1,16 +1,18 @@
 // Gli esecutori esterni (Codex, Qwen Code, Copilot): quali sono accesi in config,
-// quali CLI rispondono su questo PC e chi fa un compito di sciame che non lo dice.
-// Le regole della scelta stanno in `instradamento.ts`.
+// quali CLI rispondono su questo PC, la squadra (`/regia team`) e chi fa un compito
+// di sciame che non lo dice. Le regole della scelta stanno in `instradamento.ts`.
 
 import type { EngineInterface } from 'claude-code'
 
 import { ESECUTORI_CLI } from './codex'
 import type { EsecutoreCli } from './codex'
 import { leggiConfig, leggiHome } from './fonti'
-import { assegnaEsecutori, daChiedere, promptEsecutori } from './instradamento'
-import type { CompitoDaAssegnare, SceltaEsecutore } from './instradamento'
+import { assegnaEsecutori, daChiedere, postiEsterni, promptEsecutori } from './instradamento'
+import type { CompitoDaAssegnare, GiaAssegnati, RegolaSquadra, SceltaEsecutore } from './instradamento'
 import { chiediHaiku } from './modelli'
 import { messaggioErrore } from './parsers'
+import { NOME_SQUADRA } from './registro'
+import type { ConfigRegia, Squadra } from './registro'
 
 /** Per ogni CLI la prima riga di `--version`; `undefined` se il comando non c'e. */
 export type StatoCli = Readonly<Partial<Record<EsecutoreCli, string>>>
@@ -48,8 +50,39 @@ export function testoEsecutori(stati: readonly StatoEsecutore[]): string {
   return [
     `Esecutori esterni usabili ora: ${usabili.length === 0 ? 'nessuno, negli sciami lavora solo Claude' : usabili.join(', ')}.`,
     ...stati.map(s => `  ${s.nome}: ${s.isAcceso ? 'acceso' : 'spento in config'} · ${s.cli === undefined ? 'CLI non trovata' : `CLI trovata${s.cli === '' ? '' : ` (${s.cli})`}`}`),
-    'In uno sciame un compito senza `esecutore` lo riceve dalla mod, fra Claude e gli usabili; uno spento viene rifiutato anche se indicato o chiamato con il suo tool.',
+    'In uno sciame un compito senza `esecutore` lo riceve dalla mod, secondo la squadra impostata (/regia team): Claude oppure uno degli usabili. Uno spento viene rifiutato anche se indicato o chiamato con il suo tool.',
     'Si cambia con /regia executors codex|qwen|copilot on|off ("esecutori" in ~/.claude/regia/config.json). /regia codex|qwen on|off riguarda invece il plugin per Claude Code.',
+  ].join('\n')
+}
+
+type ConfigSquadra = Pick<ConfigRegia, 'squadra' | 'squadraQuota'>
+
+/** La squadra come la scrivono `/regia` e `/regia doctor`: la quota vale solo in `mista`. */
+export const nomeSquadra = (c: ConfigSquadra): string => `${NOME_SQUADRA[c.squadra]}${c.squadra === 'mista' ? ` ${c.squadraQuota}%` : ''}`
+
+const SPIEGA_SQUADRA: Readonly<Record<Squadra, (quota: number) => string>> = {
+  claude: () => 'Sviluppa solo Claude, come subagenti (Agent) e come compiti di sciame: un compito senza `esecutore` va sempre a Claude. Gli esecutori esterni (Codex, Qwen Code, Copilot) lavorano solo se li nomini: `esecutore` in un compito di sciame, oppure codex_avvia, qwen_avvia, copilot_avvia.',
+  mista: quota => `Claude e la squadra di sviluppo, come subagenti (Agent) e come compiti di sciame; gli esecutori esterni sono rinforzi. In uno sciame la mod tiene su Claude lo sviluppo che chiede di capire il progetto e da agli esterni cio che gli si addice (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni, compiti isolati e ben specificati): al massimo il ${quota}% dei compiti che assegna lei in uno sciame.`,
+  esterni: () => 'In uno sciame i compiti autosufficienti senza `esecutore` vanno agli esecutori esterni, senza tetto; a Claude resta cio che e legato alla sessione (i suoi tool e server MCP, le skill, i tipi di agente, cio che si e detto).',
+}
+
+const SQUADRA_IN_BREVE: Readonly<Record<Squadra, string>> = {
+  claude: 'sviluppa solo Claude, gli esterni lavorano solo se li nomini',
+  mista: 'sviluppa Claude, gli esterni prendono i compiti di sciame che gli si addicono, entro la quota',
+  esterni: 'i compiti autosufficienti di uno sciame vanno agli esterni, senza tetto',
+}
+
+/** La riga di `/regia doctor`. */
+export function rigaSquadra(c: ConfigSquadra): string {
+  return `Squadra: ${NOME_SQUADRA[c.squadra].toUpperCase()}${c.squadra === 'mista' ? `, quota esterni ${c.squadraQuota}%` : ''} — ${SQUADRA_IN_BREVE[c.squadra]} (/regia team).`
+}
+
+/** Il testo di `/regia team`. Puro. */
+export function testoSquadra(c: ConfigSquadra): string {
+  return [
+    `Squadra: ${NOME_SQUADRA[c.squadra].toUpperCase()}. Quota degli esterni: ${c.squadraQuota}%${c.squadra === 'mista' ? '' : ' (vale solo con mixed)'}.`,
+    SPIEGA_SQUADRA[c.squadra](c.squadraQuota),
+    'Si cambia con /regia team claude|mixed|external; la quota con /regia team <numero da 0 a 100> ("squadra" e "squadraQuota" in ~/.claude/regia/config.json). Quali esterni sono usabili: /regia executors.',
   ].join('\n')
 }
 
@@ -129,22 +162,26 @@ export async function esecutoriUsabili($: EngineInterface, home: string): Promis
 const ATTESA_SCELTA_MS = 15_000
 
 /**
- * Chi fa i compiti di uno sciame che non lo dicono: i vincoli, poi haiku una volta sola
- * per tutti, poi il ripiego. Non lancia: un guasto lascia i compiti a Claude.
- * `nota`: una riga per chi ha lanciato, se haiku non ha risposto.
+ * Chi fa i compiti di uno sciame che non lo dicono, secondo la squadra impostata: i vincoli, poi haiku
+ * una volta sola per tutti, poi il ripiego. Con squadra `claude` non si guarda quali CLI ci sono
+ * e non si chiede nulla: tutto a Claude. Non lancia: un guasto lascia i compiti a Claude.
+ * `gia`: cio che lo sciame ha gia (`sciame_aggiungi`). `nota`: una riga per chi ha lanciato, se haiku non ha risposto.
  */
 export async function scegliEsecutori(
   $: EngineInterface,
   home: string,
   compiti: readonly CompitoDaAssegnare[],
-  carico: ReadonlyMap<string, number>,
+  gia: GiaAssegnati,
 ): Promise<{ scelte: Map<string, SceltaEsecutore>; nota?: string }> {
   if (compiti.length === 0) return { scelte: new Map() }
   try {
-    const usabili = await esecutoriUsabili($, home)
-    const chiesti = daChiedere(compiti, usabili)
-    const risposta = chiesti.length === 0 ? undefined : await chiediHaiku($, promptEsecutori(chiesti, usabili), 40 + 20 * chiesti.length, ATTESA_SCELTA_MS)
-    const scelte = assegnaEsecutori(compiti, usabili, risposta?.testo, carico)
+    const { squadra, squadraQuota } = (await leggiConfig($, home)).dati
+    const regola: RegolaSquadra = { squadra, quota: squadraQuota }
+    const usabili = squadra === 'claude' ? [] : await esecutoriUsabili($, home)
+    const chiesti = daChiedere(compiti, usabili, regola, gia)
+    const perPrompt = squadra === 'mista' ? { squadra, tetto: postiEsterni(compiti.length, regola, gia, true) } : { squadra: 'esterni' as const }
+    const risposta = chiesti.length === 0 ? undefined : await chiediHaiku($, promptEsecutori(chiesti, usabili, perPrompt), 40 + 20 * chiesti.length, ATTESA_SCELTA_MS)
+    const scelte = assegnaEsecutori(compiti, usabili, risposta?.testo, regola, gia)
 
     return risposta?.errore === undefined ? { scelte } : { scelte, nota: `Esecutori assegnati per ripiego: haiku non ha risposto (${risposta.errore}).` }
   } catch (errore) {

@@ -58,6 +58,10 @@ export type ConfigRegia = {
   quickModello: string
   /** Gli esecutori esterni che la mod puo usare (`/regia executors`); lista vuota: lavora solo Claude. */
   esecutori: EsecutoreCli[]
+  /** Chi sviluppa: solo Claude, Claude con gli esterni di rinforzo, o gli esterni per tutto cio che e autosufficiente (`/regia team`). */
+  squadra: Squadra
+  /** In `mista`, la parte piu grande dei compiti assegnati dalla mod in uno sciame che puo andare agli esterni, in percento (`/regia team <numero>`). */
+  squadraQuota: number
   /** La mod compatta la principale oltre la soglia e da le sue istruzioni a ogni compattazione (`/regia compact on|off`). */
   compatta: boolean
   /** Riempimento del contesto, in percento, oltre cui la mod compatta a fine turno (`/regia compact <numero>`). */
@@ -76,6 +80,10 @@ export const LOG_COPILOT_REGIA = '.claude/regia/copilot/esegui.log'
 export const SCIAME_PARALLELO_PREDEFINITO = 4
 export const MODI_ORCHESTRA = ['stretta', 'guida', 'off'] as const
 export type ModoOrchestra = (typeof MODI_ORCHESTRA)[number]
+export const SQUADRE = ['claude', 'mista', 'esterni'] as const
+export type Squadra = (typeof SQUADRE)[number]
+export const SQUADRA_PREDEFINITA: Squadra = 'mista'
+export const QUOTA_SQUADRA_PREDEFINITA = 50
 
 const STATI_REGISTRO: readonly string[] = [
   'scaletta',
@@ -233,6 +241,29 @@ function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
   return { valore: 'guida', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${Object.values(NOME_MODO).join(', ')}`] }
 }
 
+/** Il nome con cui comandi e config chiamano una squadra. I nomi italiani restano validi. */
+export const NOME_SQUADRA: Readonly<Record<Squadra, string>> = { claude: 'claude', mista: 'mixed', esterni: 'external' }
+
+/** La squadra scritta in un comando o in config, in inglese o in italiano. */
+export const leggiSquadra = (grezzo: unknown): Squadra | undefined => SQUADRE.find(s => s === grezzo || NOME_SQUADRA[s] === grezzo)
+
+function campoSquadra(grezzo: unknown): Campo<Squadra> {
+  const squadra = leggiSquadra(grezzo)
+  if (squadra !== undefined) return { valore: squadra, avvisi: [] }
+
+  return { valore: SQUADRA_PREDEFINITA, avvisi: grezzo === undefined ? [] : [`config.json: "squadra" deve essere ${Object.values(NOME_SQUADRA).join(', ')}`] }
+}
+
+/** Vero per una quota degli esterni valida: un intero da 0 a 100. */
+export const isQuotaSquadra = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 100
+
+function campoQuotaSquadra(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: QUOTA_SQUADRA_PREDEFINITA, avvisi: [] }
+  if (isQuotaSquadra(grezzo)) return { valore: grezzo, avvisi: [] }
+
+  return { valore: QUOTA_SQUADRA_PREDEFINITA, avvisi: ['config.json: "squadraQuota" deve essere un intero da 0 a 100'] }
+}
+
 function campoParallelo(grezzo: unknown): Campo<number> {
   if (grezzo === undefined) return { valore: SCIAME_PARALLELO_PREDEFINITO, avvisi: [] }
   if (typeof grezzo === 'number' && Number.isInteger(grezzo) && grezzo >= 1 && grezzo <= 16) return { valore: grezzo, avvisi: [] }
@@ -288,6 +319,8 @@ export function parseConfig(
     controlloMinuti: [...CONTROLLO_PREDEFINITO_MIN],
     quickModello: QUICK_MODELLO_PREDEFINITO,
     esecutori: [...ESECUTORI_CLI],
+    squadra: SQUADRA_PREDEFINITA,
+    squadraQuota: QUOTA_SQUADRA_PREDEFINITA,
     compatta: true,
     compattaSoglia: SOGLIA_COMPATTA_PREDEFINITA,
   }
@@ -313,6 +346,8 @@ export function parseConfig(
   const controllo = campoControllo(o.controlloMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
   const esecutori = campoEsecutori(o.esecutori)
+  const squadra = campoSquadra(o.squadra)
+  const quota = campoQuotaSquadra(o.squadraQuota)
   const compatta = campoBooleano(o.compatta, 'compatta', true)
   const soglia = campoSogliaCompatta(o.compattaSoglia)
   const config: ConfigRegia = {
@@ -332,12 +367,14 @@ export function parseConfig(
     controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
     esecutori: esecutori.valore,
+    squadra: squadra.valore,
+    squadraQuota: quota.valore,
     compatta: compatta.valore,
     compattaSoglia: soglia.valore,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
     ...(copilotModello.valore === undefined ? {} : { copilotModello: copilotModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori, compatta, soglia].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori, squadra, quota, compatta, soglia].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

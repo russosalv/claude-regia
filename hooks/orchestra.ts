@@ -1,15 +1,17 @@
 // Come lavora la conversazione principale, secondo la modalita della sessione
-// (`/regia long|medium|quick`). La regola viaggia con la mod (e non con la
-// memoria di un progetto o di un PC): una sezione del prompt di sistema e, in
-// long con `orchestra stretta`, il rifiuto delle modifiche ai file del progetto.
-// Vale solo nelle sessioni con una superficie: `claude -p` e gli SDK fanno da se.
+// (`/regia long|medium|quick`) e la squadra (`/regia team`). La regola viaggia
+// con la mod (e non con la memoria di un progetto o di un PC): una sezione del
+// prompt di sistema e, in long con `orchestra stretta`, il rifiuto delle
+// modifiche ai file del progetto. Vale solo nelle sessioni con una superficie:
+// `claude -p` e gli SDK fanno da se.
 
 import type { EngineInterface } from 'claude-code'
 
 import { leggiConfig, leggiHome } from './fonti'
 import { leggiProfilo } from './profilo'
 import type { Profilo } from './profilo'
-import type { ModoOrchestra } from './registro'
+import { SQUADRA_PREDEFINITA } from './registro'
+import type { ConfigRegia, Squadra } from './registro'
 
 export const ID_SEZIONE = 'regia:orchestra'
 
@@ -33,48 +35,85 @@ const SE_NONOISE: Readonly<Record<Profilo, string>> = {
   quick: 'Se il progetto ha `.nonoise/sdlc-flow.md` (NONoise), vale la sua modalita `quick`: nessuna fase, nessun documento, nessuna validazione FPF.',
 }
 
-/** Statici per modalita: cosi restano in cache da un giro all'altro. */
-export const TESTI_ORCHESTRA: Readonly<Record<Profilo, string>> = {
-  long: [
-    '# Regia: modalita LONG, sei l\'orchestratore',
-    `Questo vale sopra l'indicazione generica del tool Agent di fare da te i lavori piccoli. ${SE_SUBAGENTE}`,
-    '',
-    'Fai le veci della persona su un lavoro lungo: scomponi, deleghi, controlli gli esiti, tieni il piano in moto e ti assicuri che i subagenti lavorino e non si blocchino.',
-    '- Le cose rapide falle tu: una risposta, una lettura mirata, una modifica di poche righe. Delega cio che e lungo, ampio o parallelizzabile: studi di architettura, sviluppi, ricerche ampie (agente Explore), suite di test e build.',
-    '- Compito autosufficiente: obiettivo, file, vincoli, cosa non toccare. Chi scrive in parallelo usa `isolation: "worktree"`.',
-    '- Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod guardando il compito. Indicali solo se la persona lo chiede o se riprovi un lavoro fallito (allora un gradino sopra).',
+const LAVORI_INDIPENDENTI = '- Lavori indipendenti: piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.'
+const SCIAME_DA_TRE = '- Tre o piu compiti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo.'
+
+/** In long, chi fa il lavoro delegato: dipende dalla squadra (`/regia team`). La quota non compare: il testo resta lo stesso se cambia. */
+const SQUADRA_LONG: Readonly<Record<Squadra, readonly string[]>> = {
+  claude: [
+    LAVORI_INDIPENDENTI,
+    SCIAME_DA_TRE,
+    '- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen Code, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.',
+  ],
+  mista: [
+    LAVORI_INDIPENDENTI,
+    `${SCIAME_DA_TRE} Non indicare \`esecutore\`: la mod tiene lo sviluppo principale su Claude e da agli esecutori esterni accesi i compiti che gli si addicono (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni), entro la quota. Indicalo solo se la persona lo chiede.`,
+    '- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen Code, Copilot) sono rinforzi, non un sostituto.',
+  ],
+  esterni: [
     '- Lavori indipendenti legati a questa sessione (i suoi tool e server MCP, una skill, un tipo di agente, cio che si e detto qui): piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
     '- Due o piu compiti indipendenti e autosufficienti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo. Non indicare `esecutore`: per ogni compito lo sceglie la mod fra Claude e gli esecutori esterni accesi, come fa per modello e sforzo.',
     '- Gli esecutori esterni (Codex, Qwen Code, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
-    '- Il piano: prima di partire scrivi ogni voce con `mcp__regia__scaletta_scrivi`, con `descrizione` (la macro-attivita spiegata alla persona: che cosa, perche, che cosa ne esce) e `fase`. La persona la legge nel pane come tasklist. Tienila aggiornata (`in_corso`, `fatto`, `bloccato` con il motivo). Porta avanti il piano fino in fondo senza chiedere il permesso a ogni voce: finche restano voci aperte e nessuno lavora, la regia ti risveglia.',
-    '- Controlla gli agenti: uno che non da segni di vita o gira a vuoto fermalo (TaskStop) e rilancia il compito, piu chiaro o un gradino sopra.',
-    SE_NONOISE.long,
-    '',
-    ...REGOLA_DOMANDE,
-    REGOLA_DOMANDE_TOOL,
-  ].join('\n'),
-  medio: [
-    '# Regia: modalita MEDIA',
-    SE_SUBAGENTE,
-    '',
-    'Lavori tu sul compito. Delega solo cio che conviene: pezzi indipendenti da fare in parallelo (piu chiamate ad Agent nello stesso messaggio, `isolation: "worktree"` per chi scrive) e ricerche ampie (agente Explore). Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod.',
-    '- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).',
-    '- Se il lavoro ha piu passi, scrivili con `mcp__regia__scaletta_scrivi` (con `descrizione`): la persona li vede nel pane come tasklist.',
-    '- Se il lavoro si rivela lungo (molti sviluppi, ore di lavoro), proponi alla persona `/regia long`.',
-    SE_NONOISE.medio,
-    '',
-    ...REGOLA_DOMANDE,
-    REGOLA_DOMANDE_TOOL,
-  ].join('\n'),
-  quick: [
-    '# Regia: modalita QUICK',
-    SE_SUBAGENTE,
-    '',
-    'Lavora da sola, senza subagenti ne Codex, salvo che la persona li chieda: risposte e modifiche rapide e dirette. Se il compito si rivela grande, dillo e proponi `/regia medium` o `/regia long`.',
-    SE_NONOISE.quick,
-    '',
-    ...REGOLA_DOMANDE,
-  ].join('\n'),
+  ],
+}
+
+/** In medio la principale lavora lei: con squadra `claude` dello sciame e degli esterni non si dice nulla. */
+const SQUADRA_MEDIO: Readonly<Record<Squadra, readonly string[]>> = {
+  claude: [],
+  mista: ['- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen Code, Copilot), entro la quota, e tiene gli altri su Claude.'],
+  esterni: ['- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).'],
+}
+
+const testoLong = (squadra: Squadra): string => [
+  '# Regia: modalita LONG, sei l\'orchestratore',
+  `Questo vale sopra l'indicazione generica del tool Agent di fare da te i lavori piccoli. ${SE_SUBAGENTE}`,
+  '',
+  'Fai le veci della persona su un lavoro lungo: scomponi, deleghi, controlli gli esiti, tieni il piano in moto e ti assicuri che i subagenti lavorino e non si blocchino.',
+  '- Le cose rapide falle tu: una risposta, una lettura mirata, una modifica di poche righe. Delega cio che e lungo, ampio o parallelizzabile: studi di architettura, sviluppi, ricerche ampie (agente Explore), suite di test e build.',
+  '- Compito autosufficiente: obiettivo, file, vincoli, cosa non toccare. Chi scrive in parallelo usa `isolation: "worktree"`.',
+  '- Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod guardando il compito. Indicali solo se la persona lo chiede o se riprovi un lavoro fallito (allora un gradino sopra).',
+  ...SQUADRA_LONG[squadra],
+  '- Il piano: prima di partire scrivi ogni voce con `mcp__regia__scaletta_scrivi`, con `descrizione` (la macro-attivita spiegata alla persona: che cosa, perche, che cosa ne esce) e `fase`. La persona la legge nel pane come tasklist. Tienila aggiornata (`in_corso`, `fatto`, `bloccato` con il motivo). Porta avanti il piano fino in fondo senza chiedere il permesso a ogni voce: finche restano voci aperte e nessuno lavora, la regia ti risveglia.',
+  '- Controlla gli agenti: uno che non da segni di vita o gira a vuoto fermalo (TaskStop) e rilancia il compito, piu chiaro o un gradino sopra.',
+  SE_NONOISE.long,
+  '',
+  ...REGOLA_DOMANDE,
+  REGOLA_DOMANDE_TOOL,
+].join('\n')
+
+const testoMedio = (squadra: Squadra): string => [
+  '# Regia: modalita MEDIA',
+  SE_SUBAGENTE,
+  '',
+  'Lavori tu sul compito. Delega solo cio che conviene: pezzi indipendenti da fare in parallelo (piu chiamate ad Agent nello stesso messaggio, `isolation: "worktree"` per chi scrive) e ricerche ampie (agente Explore). Non indicare `model` ne `effort` nella chiamata ad Agent: li sceglie la mod.',
+  ...SQUADRA_MEDIO[squadra],
+  '- Se il lavoro ha piu passi, scrivili con `mcp__regia__scaletta_scrivi` (con `descrizione`): la persona li vede nel pane come tasklist.',
+  '- Se il lavoro si rivela lungo (molti sviluppi, ore di lavoro), proponi alla persona `/regia long`.',
+  SE_NONOISE.medio,
+  '',
+  ...REGOLA_DOMANDE,
+  REGOLA_DOMANDE_TOOL,
+].join('\n')
+
+// Quick lavora da sola: la squadra non cambia nulla.
+const TESTO_QUICK = [
+  '# Regia: modalita QUICK',
+  SE_SUBAGENTE,
+  '',
+  'Lavora da sola, senza subagenti ne Codex, salvo che la persona li chieda: risposte e modifiche rapide e dirette. Se il compito si rivela grande, dillo e proponi `/regia medium` o `/regia long`.',
+  SE_NONOISE.quick,
+  '',
+  ...REGOLA_DOMANDE,
+].join('\n')
+
+const perSquadra = (testo: (squadra: Squadra) => string): Readonly<Record<Squadra, string>> =>
+  ({ claude: testo('claude'), mista: testo('mista'), esterni: testo('esterni') })
+
+/** Statici per modalita e per squadra, composti una volta sola: cosi restano in cache da un giro all'altro. */
+export const TESTI_ORCHESTRA: Readonly<Record<Profilo, Readonly<Record<Squadra, string>>>> = {
+  long: perSquadra(testoLong),
+  medio: perSquadra(testoMedio),
+  quick: perSquadra(() => TESTO_QUICK),
 }
 
 const STRUMENTI_DI_SCRITTURA = new Set(['Edit', 'Write', 'NotebookEdit'])
@@ -95,10 +134,11 @@ export function isDelProgetto(file: string, radice: string): boolean {
 export const RIFIUTO_SCRITTURA =
   'regia: sei l\'orchestratore, le modifiche ai file del progetto le fa un delegato: lancia un Agent con questo compito (senza model ne effort, li sceglie la mod). Se la persona vuole che lo faccia tu, chiedile di passare a /regia orchestra guide.'
 
-async function modoCorrente($: EngineInterface): Promise<ModoOrchestra> {
+/** Cio che della config decide la regola: il modo dell'orchestra e la squadra. */
+async function regolaCorrente($: EngineInterface): Promise<Pick<ConfigRegia, 'orchestra' | 'squadra'>> {
   const home = await leggiHome($)
 
-  return home === undefined ? 'guida' : (await leggiConfig($, home)).dati.orchestra
+  return home === undefined ? { orchestra: 'guida', squadra: SQUADRA_PREDEFINITA } : (await leggiConfig($, home)).dati
 }
 
 /** Il prompt di sistema con la sezione in coda; senza Agent, o senza superficie, com'e. */
@@ -109,9 +149,11 @@ export async function sezioniConOrchestra<S extends { id: string }>(
   nuova: (testo: string) => S,
 ): Promise<readonly S[]> {
   const isEscluso = !e.tools.includes('Agent') || e.surfaces.length === 0 || e.traits.includes('teammate') || e.traits.includes('print')
-  if (isEscluso || (await modoCorrente($)) === 'off') return sezioni
+  if (isEscluso) return sezioni
+  const { orchestra, squadra } = await regolaCorrente($)
+  if (orchestra === 'off') return sezioni
 
-  return [...sezioni, nuova(TESTI_ORCHESTRA[(await leggiProfilo($)).profilo])]
+  return [...sezioni, nuova(TESTI_ORCHESTRA[(await leggiProfilo($)).profilo][squadra])]
 }
 
 /** Il motivo per fermare una scrittura della principale, o `undefined` se puo passare. */
@@ -121,7 +163,7 @@ export async function motivoRifiuto(
 ): Promise<string | undefined> {
   const file = e.agentId === undefined ? fileDaScrivere(e) : undefined
   // `stretta` vale solo in long: in medio e quick la principale lavora lei.
-  if (file === undefined || (await modoCorrente($)) !== 'stretta' || (await leggiProfilo($)).profilo !== 'long') return undefined
+  if (file === undefined || (await regolaCorrente($)).orchestra !== 'stretta' || (await leggiProfilo($)).profilo !== 'long') return undefined
   if ((await $.session.surfaces()).length === 0) return undefined
   const repo = await $.session.repo().catch(() => undefined)
   const radice = repo?.root ?? (await $.session.cwd().catch(() => undefined))

@@ -1,7 +1,7 @@
 // Lo sciame, la parte pura: una lavagna di compiti con dipendenze, chi puo
 // partire ora, che cosa succede quando uno finisce e il testo per ciascuno.
 
-import type { Esecutore, SceltaEsecutore } from './instradamento'
+import type { Esecutore, GiaAssegnati, SceltaEsecutore } from './instradamento'
 
 export const CHIAVE_SCIAMI = 'regia.sciami.'
 export const MASSIMO_COMPITI = 40
@@ -154,6 +154,13 @@ export function caricoEsterni(s: Sciame): Map<string, number> {
   }
 
   return carico
+}
+
+/** Cio che lo sciame ha gia prima dei compiti nuovi: il carico degli esterni e quanti compiti la mod ha assegnato, a chiunque e agli esterni. Per la quota di `mista`. */
+export function giaAssegnati(s: Sciame): GiaAssegnati {
+  const dallaMod = s.compiti.filter(c => c.motivoEsecutore !== undefined && c.motivoEsecutore !== MOTIVO_INDICATO)
+
+  return { carico: caricoEsterni(s), compiti: dallaMod.length, esterni: dallaMod.filter(c => c.esecutore !== 'claude').length }
 }
 
 /** Un compito che la mod aveva dato a una CLI che non c'e torna a Claude; un lancio andato a vuoto non conta come tentativo. */

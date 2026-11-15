@@ -10,12 +10,12 @@ import { messaggioSpento, percorsiLavoro } from './codex'
 import type { Sforzo } from './codex'
 import { dimenticaCli, esecutoriUsabili, scegliEsecutori } from './esecutori'
 import { leggiConfig, leggiHome } from './fonti'
-import { gradinoSu } from './instradamento'
+import { NULLA_ASSEGNATO, gradinoSu } from './instradamento'
 import { ricordaScelta, ricordaSforzo, scegli } from './modelli'
 import { conRisparmio } from './orchestra'
 import { leggiMemoriaAgenti } from './memoria-agenti'
 import { messaggioErrore, parseEseguiLog } from './parsers'
-import { CHIAVE_SCIAMI, avvisoFine, caricoEsterni, compitoConSpento, conCompiti, conDati, conEsito, conFermo, conLancio, conRipiegoClaude, conScelte, creaSciame, daLanciare, descrivi, ferma, indirizzo, isEsternoSceltoDallaMod, isFinito, promptLavoratore } from './sciame'
+import { CHIAVE_SCIAMI, avvisoFine, compitoConSpento, conCompiti, conDati, conEsito, conFermo, conLancio, conRipiegoClaude, conScelte, creaSciame, daLanciare, descrivi, ferma, giaAssegnati, indirizzo, isEsternoSceltoDallaMod, isFinito, promptLavoratore } from './sciame'
 import type { Compito, Sciame } from './sciame'
 
 const MASSIMO_SCIAMI = 5
@@ -31,7 +31,7 @@ type Risposta = { result: string } | { deny: string }
 
 const SCHEMA_COMPITI = {
   type: 'array',
-  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: non indicarlo, lo sceglie la mod guardando il compito, fra claude e gli esecutori esterni accesi (codex, qwen = Qwen Code, copilot = GitHub Copilot CLI); indicalo solo se la persona ne ha chiesto uno preciso. qwen e copilot con scrive=false leggono soltanto. tipo: tipo di agente Claude (il compito resta a Claude). scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
+  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: omettilo, lo decide la mod secondo la squadra impostata (/regia team), fra claude e, se la squadra lo prevede, gli esecutori esterni accesi (codex, qwen = Qwen Code, copilot = GitHub Copilot CLI); indicalo solo se la persona chiede un esecutore preciso. qwen e copilot con scrive=false leggono soltanto. tipo: tipo di agente Claude (il compito resta a Claude). scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
   items: {
     type: 'object',
     properties: {
@@ -50,7 +50,7 @@ const SCHEMA_COMPITI = {
 export const STRUMENTI_SCIAME = [
   {
     name: 'sciame_avvia',
-    description: 'Lancia uno sciame di agenti Claude, Codex, Qwen e Copilot su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. L\'esecutore di ogni compito lo sceglie la mod (non indicarlo); va bene anche per un solo compito lungo e autosufficiente. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
+    description: 'Lancia uno sciame di agenti Claude, Codex, Qwen e Copilot su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. Ometti `esecutore`: lo decide la mod secondo la squadra impostata (/regia team); indicalo solo se la persona chiede un esecutore preciso. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -69,7 +69,7 @@ export const STRUMENTI_SCIAME = [
   },
   {
     name: 'sciame_aggiungi',
-    description: 'Aggiunge compiti a uno sciame in corso: per il lavoro emerso strada facendo che non e di chi lo ha trovato. Come in sciame_avvia, l\'esecutore lo sceglie la mod.',
+    description: 'Aggiunge compiti a uno sciame in corso: per il lavoro emerso strada facendo che non e di chi lo ha trovato. Come in sciame_avvia, ometti `esecutore`: lo decide la mod secondo la squadra impostata.',
     inputSchema: {
       type: 'object',
       properties: { sciame: { type: 'string' }, compiti: SCHEMA_COMPITI },
@@ -397,7 +397,7 @@ export async function sciameAvvia($: EngineInterface, grezzi: unknown): Promise<
   if (repo?.root === undefined && s.compiti.some(c => c.scrive)) return { deny: 'sciame_avvia: i compiti che scrivono lavorano in un worktree, ma la sessione non e in un repository git' }
   const spento = rifiutoSpento(s.compiti, config.dati.esecutori)
   if (spento !== undefined) return { deny: `sciame_avvia: ${spento}` }
-  const { scelte, nota } = await scegliEsecutori($, home, daAssegnare(s.compiti), new Map())
+  const { scelte, nota } = await scegliEsecutori($, home, daAssegnare(s.compiti), NULLA_ASSEGNATO)
   const assegnato = conScelte(s, scelte)
   await inFila(async () => scrivi($, sessione, [...(await leggi($, sessione)), assegnato]))
   await giro($)
@@ -450,14 +450,14 @@ export async function sciameAggiungi($: EngineInterface, grezzi: unknown): Promi
   const a = (grezzi ?? {}) as { sciame?: unknown; compiti?: unknown }
   const home = await leggiHome($)
   if (home === undefined) return { deny: 'sciame_aggiungi: HOME non definita' }
-  // La scelta degli esecutori (una domanda ad haiku) si fa fuori dalla coda, sui soli compiti nuovi; dentro, la si applica.
+  // La scelta degli esecutori (una domanda ad haiku) si fa fuori dalla coda, sui soli compiti nuovi e contando cio che la mod ha gia assegnato; dentro, la si applica.
   const attuale = trovato(await leggi($, await $.session.id()), a.sciame)
   const prova = attuale === undefined ? `sciame ${String(a.sciame)} non trovato` : conCompiti(attuale, a.compiti)
   if (attuale === undefined || typeof prova === 'string') return { deny: `sciame_aggiungi: ${String(prova)}` }
   const nuovi = prova.compiti.slice(attuale.compiti.length)
   const spento = rifiutoSpento(nuovi, (await leggiConfig($, home)).dati.esecutori)
   if (spento !== undefined) return { deny: `sciame_aggiungi: ${spento}` }
-  const { scelte, nota } = await scegliEsecutori($, home, daAssegnare(nuovi), caricoEsterni(attuale))
+  const { scelte, nota } = await scegliEsecutori($, home, daAssegnare(nuovi), giaAssegnati(attuale))
   const s = await suSciame($, a.sciame, x => {
     const con = conCompiti(x, a.compiti)
 

@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { rigaDoctorCompatta } from './compatta'
 import type { Contesto } from './compatta'
-import { leggiCli, rigaEsecutori, statoEsecutori, versioneDi } from './esecutori'
+import { leggiCli, nomeSquadra, rigaEsecutori, rigaSquadra, statoEsecutori, versioneDi } from './esecutori'
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
 import { NOME_PROFILO, PROFILO_PREDEFINITO, leggiProfilo } from './profilo'
@@ -44,10 +44,10 @@ const SPIEGA_MODO: Readonly<Record<ModoOrchestra, string>> = {
 }
 
 /** Il modo nel riepilogo di `/regia`, in una riga. */
-export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'instradamento' | 'risparmio' | 'sveglia' | 'compatta' | 'compattaSoglia'>, p: Pick<StatoProfilo, 'profilo' | 'isVia'>): string {
+export function rigaModi(c: Pick<ConfigRegia, 'orchestra' | 'squadra' | 'squadraQuota' | 'instradamento' | 'risparmio' | 'sveglia' | 'compatta' | 'compattaSoglia'>, p: Pick<StatoProfilo, 'profilo' | 'isVia'>): string {
   const accesa = (v: boolean) => (v ? 'on' : 'off')
 
-  return `Mode ${NOME_PROFILO[p.profilo]}${p.isVia ? ' (away)' : ''} · orchestra ${NOME_MODO[c.orchestra]} · models ${accesa(c.instradamento)} · savings ${accesa(c.risparmio)} · wake ${accesa(c.sveglia)} · compact ${c.compatta ? `${c.compattaSoglia}%` : 'off'} — /regia doctor per i dettagli`
+  return `Mode ${NOME_PROFILO[p.profilo]}${p.isVia ? ' (away)' : ''} · orchestra ${NOME_MODO[c.orchestra]} · team ${nomeSquadra(c)} · models ${accesa(c.instradamento)} · savings ${accesa(c.risparmio)} · wake ${accesa(c.sveglia)} · compact ${c.compatta ? `${c.compattaSoglia}%` : 'off'} — /regia doctor per i dettagli`
 }
 
 function rigaOrchestra(d: DatiDoctor): string {
@@ -69,6 +69,7 @@ export function testoDoctor(d: DatiDoctor): string {
     '',
     `Modalita: ${NOME_PROFILO[(d.profilo ?? PROFILO_PREDEFINITO).profilo].toUpperCase()}${d.profilo?.isVia === true ? ', sei via: notifiche accese' : ''} (/regia long|medium|quick, /regia away|here).`,
     rigaOrchestra(d),
+    rigaSquadra(c),
     `Modello e sforzo per compito: ${c.instradamento ? 'ACCESI — li sceglie haiku guardando il compito' : 'SPENTI — decide il motore'}${Object.keys(c.modelli).length > 0 ? `; fissati in config: ${Object.keys(c.modelli).join(', ')}` : ''}.`,
     `Risparmio: ${c.risparmio ? 'ACCESO' : 'SPENTO'} — ${d.isPonytail ? 'Ponytail attivo' : 'Ponytail non attivo'}${c.risparmio ? (d.isPonytail ? ', la mod aggiunge il rapporto breve' : ', la mod aggiunge sobrieta e rapporto breve (/regia ponytail on per installarlo)') : ''}.`,
     rigaDoctorCompatta(c, d.contesto),
@@ -81,7 +82,7 @@ export function testoDoctor(d: DatiDoctor): string {
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
     '',
-    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia models on|off, /regia savings on|off, /regia wake on|off, /regia compact on|off|<soglia>, /regia executors codex|qwen|copilot on|off.',
+    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia team claude|mixed|external|<quota>, /regia models on|off, /regia savings on|off, /regia wake on|off, /regia compact on|off|<soglia>, /regia executors codex|qwen|copilot on|off.',
   ].join('\n')
 }
 

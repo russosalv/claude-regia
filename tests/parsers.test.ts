@@ -164,6 +164,8 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     controlloMinuti: [15, 30, 60],
     quickModello: 'sonnet',
     esecutori: ['codex', 'qwen', 'copilot'],
+    squadra: 'mista',
+    squadraQuota: 50,
     compatta: true,
     compattaSoglia: 60,
   })

@@ -1,10 +1,10 @@
 // Gli esecutori esterni: la chiave `esecutori` in config, `/regia executors`, chi e usabile,
 // e la scelta dell'esecutore per i compiti di uno sciame che non lo indicano
 // (vincoli, una domanda ad haiku, ripiego a rotazione), fino al pane.
+// Qui la squadra e `esterni` (il comportamento della 0.15) dove non si dice altro;
+// le tre squadre e la quota stanno in `squadra.test.ts`.
 
 import { expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
 
 import { percorsiLavoro } from '../hooks/codex'
 import { leggiArgomentiEsecutori } from '../hooks/comando-opzioni'
@@ -17,13 +17,13 @@ import { MOTIVO_INDICATO, caricoEsterni, chiHaScelto, compitoConSpento, conLanci
 import type { Sciame } from '../hooks/sciame'
 import { cellWidth } from '../hooks/tavola'
 import { HOME, PANE, SESSIONE, baseInput } from './fixture'
-import { PROGETTO, WORKTREE, ZERO, ambiente } from './ambiente'
+import { PROGETTO, WORKTREE, ambiente } from './ambiente'
 import type { Ambiente } from './ambiente'
 import { resa } from './resa'
+import { chiama, comando, compiti, domande, esterni, haiku, lungo, motore, sciami, testoDi } from './sciame-finto'
 
 const TUTTI = ['codex', 'qwen', 'copilot'] as const
-/** Un prompt abbastanza lungo da stare in piedi da solo. */
-const lungo = (inizio: string) => `${inizio}. `.padEnd(MINIMO_AUTOSUFFICIENTE + 40, 'dettagli del compito ')
+const ESTERNI = { squadra: 'esterni', quota: 50 } as const
 const compito = (nome: string, extra: { scrive?: boolean; prompt?: string; tipo?: string } = {}) =>
   ({ nome, prompt: extra.prompt ?? lungo(`fai ${nome}`), scrive: extra.scrive ?? false, ...(extra.tipo === undefined ? {} : { tipo: extra.tipo }) })
 
@@ -78,15 +78,15 @@ test('gli argomenti di /regia executors: mostra, accende o spegne uno dei tre; i
 })
 
 test('i vincoli decidono da soli: un tipo di agente resta a Claude, e senza esterni usabili tutto resta a Claude', () => {
-  expect(vincoloEsecutore({ tipo: 'code-reviewer' }, [...TUTTI])).toEqual({ esecutore: 'claude', motivo: 'scelto dalla mod: tipo di agente Claude' })
-  expect(vincoloEsecutore({}, [])).toEqual({ esecutore: 'claude', motivo: 'scelto dalla mod: nessun esterno usabile' })
-  expect(vincoloEsecutore({}, ['qwen'])).toBeUndefined()
-  expect(daChiedere([compito('a'), compito('b', { tipo: 'Explore' })], ['qwen']).map(c => c.nome)).toEqual(['a'])
-  expect(daChiedere([compito('a')], [])).toEqual([])
+  expect(vincoloEsecutore({ tipo: 'code-reviewer' }, [...TUTTI], 'esterni')).toEqual({ esecutore: 'claude', motivo: 'scelto dalla mod: tipo di agente Claude' })
+  expect(vincoloEsecutore({}, [], 'esterni')).toEqual({ esecutore: 'claude', motivo: 'scelto dalla mod: nessun esterno usabile' })
+  expect(vincoloEsecutore({}, ['qwen'], 'esterni')).toBeUndefined()
+  expect(daChiedere([compito('a'), compito('b', { tipo: 'Explore' })], ['qwen'], ESTERNI).map(c => c.nome)).toEqual(['a'])
+  expect(daChiedere([compito('a')], [], ESTERNI)).toEqual([])
 })
 
 test('il prompt per haiku: tutti i compiti insieme con nome, se scrivono e l\'inizio del prompt; solo gli esecutori usabili', () => {
-  const testo = promptEsecutori([compito('api', { scrive: true, prompt: `  ${'x'.repeat(CARATTERI_COMPITO)}CODA  ` }), compito('doc', { prompt: 'riassumi i moduli' })], ['codex', 'qwen'])
+  const testo = promptEsecutori([compito('api', { scrive: true, prompt: `  ${'x'.repeat(CARATTERI_COMPITO)}CODA  ` }), compito('doc', { prompt: 'riassumi i moduli' })], ['codex', 'qwen'], ESTERNI)
 
   expect(testo).toContain('- claude: servono i tool, i server MCP, le skill o i tipi di agente di questa sessione')
   expect(testo).toContain('- codex: implementazione autonoma di un compito ben specificato, debug, revisione del codice, audit.')
@@ -99,7 +99,7 @@ test('il prompt per haiku: tutti i compiti insieme con nome, se scrivono e l\'in
   // Del prompt di un compito passano i primi caratteri soltanto.
   expect(testo).toContain(`\n${'x'.repeat(CARATTERI_COMPITO)}\n`)
   expect(testo).not.toContain('CODA')
-  expect(promptEsecutori([compito('a')], ['copilot'])).toContain('- copilot: implementazione autonoma di un compito ben specificato; un\'altra famiglia di modelli')
+  expect(promptEsecutori([compito('a')], ['copilot'], ESTERNI)).toContain('- copilot: implementazione autonoma di un compito ben specificato; un\'altra famiglia di modelli')
 })
 
 test('della risposta di haiku si tengono solo i compiti chiesti e solo claude o un esecutore usabile', () => {
@@ -140,7 +140,7 @@ test('il ripiego: i compiti lunghi a rotazione sugli esterni, al meno carico, ch
 
 test('assegnare: prima i vincoli, poi cio che haiku ha detto, poi il ripiego per chi resta (contando chi haiku ha gia caricato)', () => {
   const compiti = [compito('rev', { tipo: 'code-reviewer' }), compito('a', { scrive: true }), compito('b', { scrive: true }), compito('c'), compito('corto', { prompt: 'guarda il file' })]
-  const con = (risposta: string | undefined) => Object.fromEntries([...assegnaEsecutori(compiti, [...TUTTI], risposta)].map(([nome, s]) => [nome, `${s.esecutore} · ${s.motivo}`]))
+  const con = (risposta: string | undefined) => Object.fromEntries([...assegnaEsecutori(compiti, [...TUTTI], risposta, ESTERNI)].map(([nome, s]) => [nome, `${s.esecutore} · ${s.motivo}`]))
 
   expect(con('{"a":"codex","c":"claude","rev":"qwen","b":"gemini"}')).toEqual({
     rev: 'claude · scelto dalla mod: tipo di agente Claude',
@@ -159,7 +159,7 @@ test('assegnare: prima i vincoli, poi cio che haiku ha detto, poi il ripiego per
     corto: 'claude · ripiego: compito breve',
   })
   // Senza esterni usabili non c'e nulla da chiedere ne da distribuire.
-  expect([...assegnaEsecutori(compiti, [], undefined).values()].every(s => s.esecutore === 'claude' && s.motivo === 'scelto dalla mod: nessun esterno usabile' || s.motivo.endsWith('tipo di agente Claude'))).toBe(true)
+  expect([...assegnaEsecutori(compiti, [], undefined, ESTERNI).values()].every(s => s.esecutore === 'claude' && s.motivo === 'scelto dalla mod: nessun esterno usabile' || s.motivo.endsWith('tipo di agente Claude'))).toBe(true)
 })
 
 function lavagna(compiti: unknown): Sciame {
@@ -214,55 +214,8 @@ test('nel pane un compito in attesa dice lo sciame e chi ha scelto l\'esecutore'
   expect(snap.viste.sessione.scaletta.slice(0, 2).map(r => [r.nome, r.esecutore, r.note])).toEqual([['a', 'codex', 'sciame s1 · mod'], ['b', 'claude', 'sciame s1']])
 })
 
-const BIN = (esecutore: string) => `${HOME}/.claude/regia/bin/${esecutore}-esegui`
-const MODELLO = '{"modello":"haiku","sforzo":"low"}'
-const isDomandaEsecutori = (prompt: string | undefined) => prompt?.startsWith('Assegna ogni compito') === true
-
-/** Haiku finto: alla domanda sugli esecutori risponde `esecutori` (o non risponde), al resto modello e sforzo. */
-function haiku(amb: () => Ambiente, esecutori: string | undefined) {
-  return () => {
-    if (!isDomandaEsecutori(amb().complete.at(-1))) return { isAnswered: true, text: MODELLO, usage: ZERO }
-
-    return esecutori === undefined ? undefined : { isAnswered: true, text: esecutori, usage: ZERO }
-  }
-}
-
-/** Il motore finto dello sciame: gli agenti Claude lanciati vivono nella lista (`agenti: () => m.agenti` nell'ambiente). */
-function motore($: Engine, on: On) {
-  const agenti: { id: string; status: string; name?: string }[] = []
-  on('agent.spawn', (_, e) => {
-    const agentId = `a${agenti.length + 1}`
-    agenti.push({ id: agentId, status: 'running', name: e.name })
-
-    return { model: e.model ?? 'claude-opus-5-5', agentId }
-  })
-  on('turn.complete', () => ({ text: '' }) as never)
-  on('session.surfaces', () => ({ value: ['terminal'] as never }))
-  on('prompt.submit', (_, e) => ({ text: e.text }) as never)
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  const finisce = (agentId: string, answer = 'fatto') => {
-    const agente = agenti.find(a => a.id === agentId)
-    if (agente !== undefined) agente.status = 'completed'
-
-    return $.turn.complete({ answer, durationMs: 1, isAborted: false, turnId: 't', agentId, reason: 'answer' } as never)
-  }
-
-  return { agenti, finisce, claude: () => agenti.map(a => String(a.name).split('-').slice(1).join('-')) }
-}
-
-const chiama = ($: Engine, tool: string, argomenti: Record<string, unknown>) =>
-  $.tool.call({ tool: `mcp__regia__${tool}`, ...argomenti } as never) as Promise<{ result?: string; deny?: string; text?: string }>
-const comando = ($: Engine, args: string) =>
-  $.command.run({ command: 'regia', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 } })
-const testoDi = (esito: { result?: string; deny?: string; text?: string }) => String(esito.result ?? esito.deny ?? esito.text)
-const sciami = (amb: Ambiente) => (amb.store.get(`regia.sciami.${SESSIONE}`) ?? []) as Sciame[]
-const compiti = (amb: Ambiente) => Object.fromEntries((sciami(amb)[0]?.compiti ?? []).map(c => [c.nome, c]))
-/** I lanci degli script esterni: `<esecutore>:<compito>`. */
-const esterni = (amb: Ambiente) => amb.lanci.filter(l => l.argv[0] === 'bash').map(l => `${String(l.argv[3]).split('/').pop()?.replace('-esegui', '')}:${String(l.argv[4]).split('-').slice(1).join('-')}`)
-const domande = (amb: Ambiente) => amb.complete.filter(isDomandaEsecutori)
-
 test('sciame senza esecutore: una sola domanda ad haiku per tutti i compiti, e ognuno parte con chi gli e toccato', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, risposta: haiku(() => amb, '{"api":"codex","doc":"qwen","cerca":"claude","boh":"gemini","rev":"qwen","forzato":"qwen"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'esterni' }, risposta: haiku(() => amb, '{"api":"codex","doc":"qwen","cerca":"claude","boh":"gemini","rev":"qwen","forzato":"qwen"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
 
@@ -304,7 +257,7 @@ test('sciame senza esecutore: una sola domanda ad haiku per tutti i compiti, e o
 })
 
 test('se haiku non risponde i compiti lunghi vanno a rotazione sugli esterni, i brevi a Claude, e chi ha lanciato lo sa', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, risposta: haiku(() => amb, undefined) })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'esterni' }, risposta: haiku(() => amb, undefined) })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
 
@@ -329,7 +282,7 @@ test('se haiku non risponde i compiti lunghi vanno a rotazione sugli esterni, i 
 })
 
 test('un esecutore spento in config: rifiutato dal suo tool e nello sciame se indicato, mai scelto dalla mod', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { esecutori: ['qwen'] }, risposta: haiku(() => amb, '{"a":"codex","b":"qwen"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'esterni', esecutori: ['qwen'] }, risposta: haiku(() => amb, '{"a":"codex","b":"qwen"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
 
@@ -417,7 +370,7 @@ test('senza le CLI non si chiede nulla ad haiku e tutto resta a Claude; un esecu
 })
 
 test('la CLI di un esterno scelto dalla mod manca al lancio (exit 127): il compito passa a Claude invece di fallire due volte', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, risposta: haiku(() => amb, '{"a":"codex"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'esterni' }, risposta: haiku(() => amb, '{"a":"codex"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
   await chiama($, 'sciame_avvia', { obiettivo: 'prova', compiti: [{ nome: 'a', prompt: lungo('implementa a'), scrive: true }] })
@@ -439,7 +392,7 @@ test('la CLI di un esterno scelto dalla mod manca al lancio (exit 127): il compi
 })
 
 test('un esterno scelto dalla mod e spento prima che il compito parta: al lancio torna a Claude', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: {}, risposta: haiku(() => amb, '{"dopo":"qwen"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'external' }, risposta: haiku(() => amb, '{"dopo":"qwen"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
   await chiama($, 'sciame_avvia', { obiettivo: 'prova', compiti: [{ nome: 'prima', prompt: 'p', esecutore: 'claude' }, { nome: 'dopo', prompt: lungo('riassumi'), dopo: ['prima'] }] })
@@ -454,7 +407,7 @@ test('un esterno scelto dalla mod e spento prima che il compito parta: al lancio
 })
 
 test('sciame_aggiungi sceglie l\'esecutore dei soli compiti nuovi, contando chi e gia carico', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, risposta: haiku(() => amb, '{"nuovo":"qwen","primo":"codex"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, config: { squadra: 'esterni' }, risposta: haiku(() => amb, '{"nuovo":"qwen","primo":"codex"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
   await chiama($, 'sciame_avvia', { obiettivo: 'prova', parallelo: 1, compiti: [{ nome: 'primo', prompt: 'p', esecutore: 'claude' }, { nome: 'secondo', prompt: lungo('implementa'), esecutore: 'codex', scrive: true }] })
