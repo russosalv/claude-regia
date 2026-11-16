@@ -18,6 +18,7 @@ import type { Memoria } from './fonti'
 import { domandeAperte, leggiDomande } from './domande'
 import { leggiMemoriaAgenti } from './memoria-agenti'
 import { leggiCasella } from './posta-io'
+import { chiHaScelto } from './sciame'
 import { compitiInAttesa } from './sciame-motore'
 import type { MemoriaAgenti } from './memoria-agenti'
 import {
@@ -93,7 +94,10 @@ export async function aggiorna(
     tempiPrecedenti: precedente.tempiAgenti,
     isPrimaLettura: precedente.aggiornatoMs === 0,
     sessioneId: sessione.sessioneId,
-    attesaSciame: inAttesa.map(({ sciame, compito }) => ({ sciame, nome: compito.nome, esecutore: compito.esecutore, isBloccato: compito.stato === 'bloccato' })),
+    attesaSciame: inAttesa.map(({ sciame, compito }) => ({
+      sciame, nome: compito.nome, esecutore: compito.esecutore, isBloccato: compito.stato === 'bloccato',
+      ...(compito.motivoEsecutore === undefined ? {} : { chi: chiHaScelto(compito.motivoEsecutore) }),
+    })),
     ricordiAgenti: sessione.memoria?.agenti,
     infoAgenti: sessione.agenti?.agenti,
     lanci: sessione.agenti?.lanci,

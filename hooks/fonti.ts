@@ -6,7 +6,7 @@ import type { AgentInfo, EngineInterface } from 'claude-code'
 import type { LetturaLog } from './model'
 import { cartellaLavoro, messaggioErrore, parseEseguiLog, parsePs, ultimoSegmento } from './parsers'
 import type { ProcessoCodex } from './parsers'
-import { LOG_CODEX_REGIA, LOG_QWEN_REGIA, configPredefinita, parseConfig, validaRegistro } from './registro'
+import { LOG_CODEX_REGIA, LOG_COPILOT_REGIA, LOG_QWEN_REGIA, configPredefinita, parseConfig, validaRegistro } from './registro'
 import type { ConfigRegia, VoceRegistro } from './registro'
 import { ricordiDaMemoria } from './agenti'
 import { CHIAVE_AGENTI } from './memoria-agenti'
@@ -87,7 +87,7 @@ export function leggiLog(
   return provando(`log codex ${nome}`, async () => {
     if (!(await $.fs.exists(percorso))) {
       // Il log di codex_avvia nasce col primo lancio: finche manca non e un problema.
-      const isRegia = percorso.endsWith(`/${LOG_CODEX_REGIA}`) || percorso.endsWith(`/${LOG_QWEN_REGIA}`)
+      const isRegia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA, LOG_COPILOT_REGIA].some(l => percorso.endsWith(`/${l}`))
       return { avvisi: isRegia ? [] : [`log codex non trovato: ${nome}`] }
     }
     const { voci, ignorate } = parseEseguiLog(await $.fs.read(percorso))
@@ -208,6 +208,8 @@ export function pidConSessioneDaPs(uscita: string, sessioneId: string): Set<numb
 const CHIAVE_MEMORIA = 'regia.sessione.'
 /** La modalita e la presenza della persona per sessione (`profilo.ts`). */
 export const CHIAVE_PROFILO = 'regia.profilo.'
+/** L'ultima compattazione fatta dalla mod, per sessione (`compatta-motore.ts`). */
+export const CHIAVE_COMPATTA = 'regia.compatta.'
 const SCADENZA_MEMORIA_MS = 30 * 24 * 3600 * 1000
 
 function nomiDaMemoria(grezzo: unknown): string[] {
@@ -248,7 +250,7 @@ export async function scriviMemoria(
 /** Toglie dallo store le memorie (lavori e agenti) di sessioni ferme da oltre 30 giorni. */
 export async function potaMemorie($: EngineInterface, oraMs: number): Promise<string[]> {
   try {
-    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI) || k.startsWith(CHIAVE_PROFILO))
+    const chiavi = (await $.store.keys()).filter(k => k.startsWith(CHIAVE_MEMORIA) || k.startsWith(CHIAVE_AGENTI) || k.startsWith(CHIAVE_SCIAMI) || k.startsWith(CHIAVE_PROFILO) || k.startsWith(CHIAVE_COMPATTA))
     await Promise.all(
       chiavi.map(async chiave => {
         const voce = (await $.store.get(chiave)) as { aggiornatoMs?: unknown } | { creatoMs?: unknown }[] | undefined

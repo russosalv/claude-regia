@@ -1,6 +1,8 @@
 // Lo sciame, la parte pura: una lavagna di compiti con dipendenze, chi puo
 // partire ora, che cosa succede quando uno finisce e il testo per ciascuno.
 
+import type { Esecutore, GiaAssegnati, SceltaEsecutore } from './instradamento'
+
 export const CHIAVE_SCIAMI = 'regia.sciami.'
 export const MASSIMO_COMPITI = 40
 export const MASSIMO_PARALLELO = 16
@@ -13,7 +15,9 @@ export type StatoCompito = 'attesa' | 'corsa' | 'fatto' | 'fallito' | 'bloccato'
 export type Compito = {
   nome: string
   prompt: string
-  esecutore: 'claude' | 'codex' | 'qwen'
+  esecutore: Esecutore
+  /** Chi ha scelto l'esecutore: `indicato`, `scelto dalla mod: ...`, `ripiego: ...`. Senza, il compito e ancora da assegnare. */
+  motivoEsecutore?: string
   /** Tipo di agente Claude; se manca, `general-purpose`. */
   tipo?: string
   /** Vero se cambia dei file: lavora in un worktree suo. */
@@ -44,6 +48,11 @@ export type Sciame = {
 
 type Grezzo = { nome?: unknown; prompt?: unknown; esecutore?: unknown; tipo?: unknown; scrive?: unknown; dopo?: unknown }
 
+/** L'esecutore scritto nella chiamata: la mod non lo cambia. */
+export const MOTIVO_INDICATO = 'indicato'
+
+const ESECUTORI: readonly Esecutore[] = ['claude', 'codex', 'qwen', 'copilot']
+
 /** Il nome con cui un compito gira ed e raggiungibile in posta. */
 export const indirizzo = (s: Pick<Sciame, 'id'>, c: Pick<Compito, 'nome'>): string => `${s.id}-${c.nome}`
 
@@ -53,11 +62,14 @@ function leggiCompito(g: Grezzo): Compito | string {
   if (typeof g.prompt !== 'string' || g.prompt.trim() === '') return `il compito "${nome}" non ha un prompt`
   const isListaDopo = g.dopo === undefined || (Array.isArray(g.dopo) && g.dopo.every(d => typeof d === 'string'))
   if (!isListaDopo) return `"dopo" del compito "${nome}" deve essere una lista di nomi`
+  // Senza esecutore il compito e di Claude finche la mod non sceglie (`conScelte`).
+  const indicato = ESECUTORI.find(e => e === g.esecutore)
 
   return {
     nome,
     prompt: g.prompt,
-    esecutore: g.esecutore === 'codex' || g.esecutore === 'qwen' ? g.esecutore : 'claude',
+    esecutore: indicato ?? 'claude',
+    ...(indicato === undefined ? {} : { motivoEsecutore: MOTIVO_INDICATO }),
     ...(typeof g.tipo === 'string' && g.tipo.trim() !== '' ? { tipo: g.tipo.trim() } : {}),
     scrive: g.scrive === true,
     dopo: (g.dopo ?? []) as string[],
@@ -114,6 +126,55 @@ export function creaSciame(a: { id: string; obiettivo: unknown; compiti: unknown
 
 function cambia(s: Sciame, nome: string, f: (c: Compito) => Compito): Sciame {
   return { ...s, compiti: s.compiti.map(c => (c.nome === nome ? f(c) : c)) }
+}
+
+/** I compiti ancora da assegnare ricevono l'esecutore scelto; chi lo ha gia (indicato o deciso prima) resta com'e. */
+export function conScelte(s: Sciame, scelte: ReadonlyMap<string, SceltaEsecutore>): Sciame {
+  return { ...s, compiti: s.compiti.map((c): Compito => {
+    const scelta = c.motivoEsecutore === undefined ? scelte.get(c.nome) : undefined
+
+    return scelta === undefined ? c : { ...c, esecutore: scelta.esecutore, motivoEsecutore: scelta.motivo }
+  }) }
+}
+
+/** Il primo compito che indica un esecutore esterno spento in config, se c'e. */
+export function compitoConSpento(compiti: readonly Compito[], accesi: readonly string[]): Compito | undefined {
+  return compiti.find(c => c.esecutore !== 'claude' && c.motivoEsecutore === MOTIVO_INDICATO && !accesi.includes(c.esecutore))
+}
+
+/** Vero se l'esecutore esterno lo ha scelto la mod: se poi manca, il compito puo tornare a Claude. */
+export const isEsternoSceltoDallaMod = (c: Compito): boolean =>
+  c.esecutore !== 'claude' && c.motivoEsecutore !== undefined && c.motivoEsecutore !== MOTIVO_INDICATO
+
+/** Quanti compiti non conclusi ha gia ogni esecutore esterno: il ripiego da al meno carico. */
+export function caricoEsterni(s: Sciame): Map<string, number> {
+  const carico = new Map<string, number>()
+  for (const c of s.compiti) {
+    if (c.esecutore !== 'claude' && c.motivoEsecutore !== undefined && (c.stato === 'attesa' || c.stato === 'corsa')) carico.set(c.esecutore, (carico.get(c.esecutore) ?? 0) + 1)
+  }
+
+  return carico
+}
+
+/** Cio che lo sciame ha gia prima dei compiti nuovi: il carico degli esterni e quanti compiti la mod ha assegnato, a chiunque e agli esterni. Per la quota di `mista`. */
+export function giaAssegnati(s: Sciame): GiaAssegnati {
+  const dallaMod = s.compiti.filter(c => c.motivoEsecutore !== undefined && c.motivoEsecutore !== MOTIVO_INDICATO)
+
+  return { carico: caricoEsterni(s), compiti: dallaMod.length, esterni: dallaMod.filter(c => c.esecutore !== 'claude').length }
+}
+
+/** Un compito che la mod aveva dato a una CLI che non c'e torna a Claude; un lancio andato a vuoto non conta come tentativo. */
+export function conRipiegoClaude(s: Sciame, nome: string, motivo: string): Sciame {
+  return cambia(s, nome, c => ({
+    ...c,
+    esecutore: 'claude',
+    motivoEsecutore: motivo,
+    stato: 'attesa',
+    tentativi: Math.max(0, c.tentativi - (c.stato === 'corsa' ? 1 : 0)),
+    modello: undefined,
+    sforzo: undefined,
+    lancioMs: undefined,
+  }))
 }
 
 export const conLancio = (s: Sciame, nome: string, dati: Partial<Compito>): Sciame =>
@@ -199,13 +260,17 @@ export function promptLavoratore(s: Sciame, c: Compito): string {
 const SEGNI: Readonly<Record<StatoCompito, string>> = { attesa: '○', corsa: '●', fatto: '✓', fallito: '✗', bloccato: '⊘', annullato: '■' }
 
 function rigaCompito(c: Compito, massimo: number): string {
-  const dati = [c.esecutore, c.modello, c.sforzo, c.tentativi > 1 ? `tentativo ${c.tentativi}` : undefined].filter(Boolean).join(', ')
+  const chi = c.motivoEsecutore === undefined ? c.esecutore : `${c.esecutore} · ${c.motivoEsecutore}`
+  const dati = [chi, c.modello, c.sforzo, c.tentativi > 1 ? `tentativo ${c.tentativi}` : undefined].filter(Boolean).join(', ')
   const attesa = c.stato === 'corsa' && c.attesaMs !== undefined ? ', in attesa di un suo comando' : ''
   const esito = c.esito === undefined ? '' : `: ${c.esito.replace(/\s+/g, ' ').slice(0, massimo)}`
   const file = c.fileEsito === undefined ? '' : ` [${c.fileEsito}]`
 
   return `${SEGNI[c.stato]} ${c.nome} (${dati}${attesa})${esito}${file}`
 }
+
+/** Chi ha scelto l'esecutore, in una parola, per le righe strette del pane: `indicato`, `mod`, `ripiego`. */
+export const chiHaScelto = (motivo: string): string => (motivo.startsWith('scelto dalla mod') ? 'mod' : motivo.split(':')[0]?.trim() ?? motivo)
 
 /** La lavagna per il modello o per `/regia swarm`: poche righe. */
 export function descrivi(s: Sciame, massimo = 160): string {

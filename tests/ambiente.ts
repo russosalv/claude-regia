@@ -33,6 +33,8 @@ export type OpzioniAmbiente = {
   file?: Record<string, string>
   agenti?: () => unknown[]
   senzaRepo?: boolean
+  /** Le CLI che su questo PC finto non ci sono: `<cli> --version` risponde 127. */
+  cliAssenti?: readonly string[]
 }
 
 export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
@@ -66,7 +68,8 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   on('session.id', () => ({ value: SESSIONE }))
   on('session.cwd', () => ({ value: PROGETTO }))
   on('session.repo', () => ({ value: opzioni.senzaRepo === true ? null : { root: PROGETTO, name: 'progetto', remote: null, internal: false } }))
-  on('fs.stat', (_, e) => (e.path === WORKTREE || e.path === PROGETTO
+  // Anche i worktree che uno sciame crea (con un `git worktree add` finto) sono cartelle.
+  on('fs.stat', (_, e) => (e.path === PROGETTO || e.path.startsWith(`${PROGETTO}/.worktrees/`)
     ? { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }
     : { value: { kind: 'other' as const, size: 0, mtimeMs: 0, isLink: false } }))
   on('fs.exists', (_, e) => ({
@@ -87,6 +90,9 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   })
   on('process.run', (_, e) => {
     stato.lanci.push({ argv: e.argv, env: e.init?.env })
+    if (e.argv[1] === '--version' && opzioni.cliAssenti?.includes(e.argv[0] ?? '') === true) {
+      return { value: { exitCode: 127, stdout: '', stderr: 'command not found', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     const stdout = e.argv[0] === 'ps' ? PS
       : e.argv[0] === 'bash' ? '4242\n'
         : e.argv[0] === 'tail' ? (file.get(e.argv[e.argv.length - 1] ?? '') ?? '')

@@ -31,13 +31,78 @@ test('il comando dice la modalita, con l\'obiettivo; il resto non e una modalita
   expect(statoDaStore({ profilo: 'boh', isVia: true }).profilo).toBe('medio')
 })
 
+const SQUADRE = ['claude', 'mista', 'esterni'] as const
+
 test('le regole: long orchestra e fa da se le cose rapide, quick lavora da sola; ogni domanda col suo contesto', () => {
-  expect(TESTI_ORCHESTRA.long).toContain('Le cose rapide falle tu')
-  expect(TESTI_ORCHESTRA.long).toContain('`descrizione`')
-  expect(TESTI_ORCHESTRA.medio).toContain('Lavori tu sul compito')
-  expect(TESTI_ORCHESTRA.quick).toContain('senza subagenti')
-  for (const testo of Object.values(TESTI_ORCHESTRA)) expect(testo).toContain('Mai "per la domanda 1 cosa facciamo?"')
-  expect(TESTI_ORCHESTRA.quick).not.toContain('domanda_scrivi')
+  for (const squadra of SQUADRE) {
+    expect(TESTI_ORCHESTRA.long[squadra]).toContain('Le cose rapide falle tu')
+    expect(TESTI_ORCHESTRA.long[squadra]).toContain('`descrizione`')
+    expect(TESTI_ORCHESTRA.medio[squadra]).toContain('Lavori tu sul compito')
+    expect(TESTI_ORCHESTRA.quick[squadra]).toContain('senza subagenti')
+    for (const perSquadra of Object.values(TESTI_ORCHESTRA)) expect(perSquadra[squadra]).toContain('Mai "per la domanda 1 cosa facciamo?"')
+    expect(TESTI_ORCHESTRA.quick[squadra]).not.toContain('domanda_scrivi')
+  }
+})
+
+const riga = (profilo: 'long' | 'medio', squadra: (typeof SQUADRE)[number], pezzo: string) => TESTI_ORCHESTRA[profilo][squadra].split('\n').find(r => r.includes(pezzo)) ?? ''
+const AGENT_PER_I_LAVORI_INDIPENDENTI = '- Lavori indipendenti: piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.'
+const SCIAME_DA_TRE = '- Tre o piu compiti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo.'
+
+test('squadra claude: in long sviluppa Claude e gli esterni si usano solo se la persona li nomina; in medio non se ne parla', () => {
+  const long = TESTI_ORCHESTRA.long.claude
+
+  // Le due righe di prima della 0.15, senza nulla sull'esecutore.
+  expect(long.split('\n')).toContain(AGENT_PER_I_LAVORI_INDIPENDENTI)
+  expect(long.split('\n')).toContain(SCIAME_DA_TRE)
+  const squadra = riga('long', 'claude', 'La squadra di sviluppo e Claude')
+  expect(squadra).toBe('- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen Code, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.')
+  // Nulla dice alla principale di usare gli esterni da se, ne di lasciare l'esecutore alla mod.
+  for (const pezzo of ['fanno parte della squadra', 'senza aspettare che la persona', 'Non indicare `esecutore`', 'lo sceglie la mod fra', 'sciame di un compito', 'quota']) expect(long).not.toContain(pezzo)
+  expect(long.split('\n').filter(r => /Codex|Qwen|Copilot|codex_avvia/.test(r))).toEqual([squadra])
+
+  expect(TESTI_ORCHESTRA.medio.claude).not.toContain('sciame_avvia')
+  expect(TESTI_ORCHESTRA.medio.claude).not.toContain('esecutor')
+})
+
+test('squadra mista (la predefinita): in long Agent per i lavori indipendenti, lo sciame da tre compiti senza `esecutore`, gli esterni rinforzi entro la quota', () => {
+  const long = TESTI_ORCHESTRA.long.mista
+
+  // I subagenti sono il modo normale di fare in parallelo, non solo per cio che e legato alla sessione.
+  expect(long.split('\n')).toContain(AGENT_PER_I_LAVORI_INDIPENDENTI)
+  expect(long).not.toContain('legati a questa sessione')
+  expect(riga('long', 'mista', '`mcp__regia__sciame_avvia`')).toBe(`${SCIAME_DA_TRE} Non indicare \`esecutore\`: la mod tiene lo sviluppo principale su Claude e da agli esecutori esterni accesi i compiti che gli si addicono (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni), entro la quota. Indicalo solo se la persona lo chiede.`)
+  expect(riga('long', 'mista', 'rinforzi')).toBe('- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen Code, Copilot) sono rinforzi, non un sostituto.')
+  for (const pezzo of ['fanno parte della squadra', 'senza aspettare che la persona', 'sciame di un compito', 'Due o piu compiti']) expect(long).not.toContain(pezzo)
+  // La quota e nominata ma non il suo numero: la sezione non cambia quando cambia.
+  expect(long).not.toMatch(/\d+%/)
+
+  expect(riga('medio', 'mista', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen Code, Copilot), entro la quota, e tiene gli altri su Claude.')
+})
+
+test('squadra esterni: il testo della 0.15, long li usa senza che la persona lo chieda e non indica l\'esecutore, medio li puo usare', () => {
+  // Lo sciame: da due compiti indipendenti, senza `esecutore`, che sceglie la mod.
+  expect(TESTI_ORCHESTRA.long.esterni.split('\n').slice(7, 10)).toEqual([
+    '- Lavori indipendenti legati a questa sessione (i suoi tool e server MCP, una skill, un tipo di agente, cio che si e detto qui): piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
+    '- Due o piu compiti indipendenti e autosufficienti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo. Non indicare `esecutore`: per ogni compito lo sceglie la mod fra Claude e gli esecutori esterni accesi, come fa per modello e sforzo.',
+    // I tre esterni sono della squadra; i tool diretti solo se la persona nomina l'esecutore.
+    '- Gli esecutori esterni (Codex, Qwen Code, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
+  ])
+  expect(TESTI_ORCHESTRA.long.esterni).not.toContain('fuori dalla sessione')
+  expect(riga('medio', 'esterni', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).')
+})
+
+test('la regola cambia solo nelle righe della squadra, e quick e la stessa con ogni squadra', () => {
+  // Quick lavora da sola: nessuno sciame e nessun esecutore nella sua regola.
+  expect(TESTI_ORCHESTRA.quick.claude).toBe(TESTI_ORCHESTRA.quick.mista)
+  expect(TESTI_ORCHESTRA.quick.esterni).toBe(TESTI_ORCHESTRA.quick.mista)
+  expect(TESTI_ORCHESTRA.quick.mista).not.toContain('esecutor')
+  expect(TESTI_ORCHESTRA.quick.mista).not.toContain('sciame')
+
+  const fuori = (profilo: 'long' | 'medio', squadra: (typeof SQUADRE)[number]) => TESTI_ORCHESTRA[profilo][squadra].split('\n').filter(r => !TESTI_ORCHESTRA[profilo].claude.split('\n').includes(r)).length
+  // Long: le tre righe della squadra (in mista la prima e quella di claude). Medio: una riga in piu.
+  expect([fuori('long', 'mista'), fuori('long', 'esterni'), fuori('medio', 'mista'), fuori('medio', 'esterni')]).toEqual([2, 3, 1, 1])
+  expect(new Set(SQUADRE.map(s => TESTI_ORCHESTRA.long[s])).size).toBe(3)
+  expect(new Set(SQUADRE.map(s => TESTI_ORCHESTRA.medio[s])).size).toBe(3)
 })
 
 test('una domanda nuova vuole titolo e contesto, tiene 4 opzioni, si chiude; le aperte sono della sessione', () => {
@@ -96,20 +161,20 @@ test('/regia quick passa a sonnet e /regia medium rimette il modello di prima; l
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'x', scope: 'shared' as const }] }))
   const regola = async () => (await $.prompt.compose(INPUT_PROMPT as never)).sections.find(s => s.id === 'regia:orchestra')?.text
 
-  expect(await regola()).toBe(TESTI_ORCHESTRA.medio)
+  expect(await regola()).toBe(TESTI_ORCHESTRA.medio.mista)
   expect((await comando($, 'quick sistema il refuso nel README')).text).toContain('la principale passa a sonnet (prima: opus')
   await amb.clock?.advance(10)
   expect(modelli).toEqual(['sonnet'])
   expect(inviati).toEqual(['sistema il refuso nel README'])
-  expect(await regola()).toBe(TESTI_ORCHESTRA.quick)
+  expect(await regola()).toBe(TESTI_ORCHESTRA.quick.mista)
   expect(amb.store.get(`regia.profilo.${SESSIONE}`)).toMatchObject({ profilo: 'quick', modelloPrima: 'opus' })
 
   expect((await comando($, 'medium')).text).toContain('La principale torna a opus')
   await amb.clock?.advance(10)
   expect(modelli).toEqual(['sonnet', 'opus'])
-  expect(await regola()).toBe(TESTI_ORCHESTRA.medio)
+  expect(await regola()).toBe(TESTI_ORCHESTRA.medio.mista)
   await comando($, 'long')
-  expect(await regola()).toBe(TESTI_ORCHESTRA.long)
+  expect(await regola()).toBe(TESTI_ORCHESTRA.long.mista)
   expect((await comando($, '')).text).toContain('Mode long ·')
 })
 
@@ -199,4 +264,17 @@ test('il piano nel pane: aperte per fase, fatte chiuse in un gruppo, la descrizi
   expect(dettaglio[0]).toContain('◆ piano · Modulo storico')
   expect(dettaglio.join(' ')).toContain('Tabelle e API dello storico letture.')
   await ui.unmount()
+})
+
+test('con NONoise ogni modalita rimanda alle fasi di .nonoise/sdlc-flow.md e limita la validazione FPF', () => {
+  for (const [profilo, modalita] of [['long', '`long`'], ['medio', '`medium`'], ['quick', '`quick`']] as const) {
+    for (const squadra of SQUADRE) {
+      const nonoise = TESTI_ORCHESTRA[profilo][squadra].split('\n').find(r => r.includes('.nonoise/sdlc-flow.md'))
+      expect(nonoise).toContain(modalita)
+      expect(nonoise).toContain('FPF')
+    }
+  }
+  // In long le fasi vanno in scaletta; in quick non ce ne sono.
+  expect(TESTI_ORCHESTRA.long.mista).toContain('mettile in scaletta')
+  expect(TESTI_ORCHESTRA.quick.mista).toContain('nessuna fase')
 })

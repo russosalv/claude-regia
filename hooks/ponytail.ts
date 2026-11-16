@@ -3,6 +3,8 @@
 // di Qwen per Claude Code, se mancano, una volta per versione. Dopo vivono di
 // vita sua: la mod non lo aggiorna e, se viene tolto, non lo rimette fino alla
 // versione successiva. Chi non li vuole ha `/regia ponytail|codex|qwen off`.
+// Questi comandi riguardano solo i plugin: gli esecutori Codex, Qwen e Copilot
+// (sciame e `*_avvia`) si accendono e si spengono con `/regia executors`.
 
 import type { EngineInterface } from 'claude-code'
 
@@ -106,24 +108,26 @@ export function leggiArgomentiPonytail(args: string): ArgomentiPlugin | undefine
 export async function comandoPonytail($: EngineInterface, a: ArgomentiPlugin): Promise<string> {
   const d = DIPENDENZE.find(x => x.nome === (a.nome ?? 'ponytail')) ?? DIPENDENZE[0]!
   const altrimenti = d.nome === 'ponytail' ? ' La mod continua con la sua regola.' : ''
+  // `/regia codex|qwen` riguarda il plugin per Claude Code, non l'esecutore: lo si dice in ogni risposta.
+  const esecutore = d.cli === undefined ? '' : `\nQuesto comando riguarda solo il plugin ${d.nome} per Claude Code. L'esecutore ${d.cli} (compiti di sciame, ${d.cli}_avvia) si accende e si spegne con /regia executors ${d.cli} on|off.`
   try {
     const home = await leggiHome($)
     if (home === undefined) return 'regia: HOME non definita, non trovo la config.'
     if (a.valore === false) {
       await scriviChiave($, home, d.chiave, false)
 
-      return `La mod non installera piu il plugin ${d.nome}. Se e gia installato resta: per toglierlo, claude plugin uninstall ${d.plugin}.`
+      return `La mod non installera piu il plugin ${d.nome}. Se e gia installato resta: per toglierlo, claude plugin uninstall ${d.plugin}.${esecutore}`
     }
     if (a.valore === true) await scriviChiave($, home, d.chiave, true)
     const stato = await leggiStato($, d.nome)
-    if (stato === 'attivo') return `Plugin ${d.nome} attivo (${d.plugin}): vive di vita sua, la mod non lo aggiorna.`
-    if (stato === 'spento') return `Plugin ${d.nome} installato ma disabilitato a mano: la mod non lo tocca.${altrimenti}`
-    if (!(await leggiConfig($, home)).dati[d.chiave]) return `Il plugin ${d.nome} non c'e e la mod non lo installa.${altrimenti} /regia ${d.nome} on lo installa.`
-    if (!(await haCli($, d))) return `Il plugin ${d.nome} non si installa: la CLI ${d.cli} non c'e su questo PC.`
+    if (stato === 'attivo') return `Plugin ${d.nome} attivo (${d.plugin}): vive di vita sua, la mod non lo aggiorna.${esecutore}`
+    if (stato === 'spento') return `Plugin ${d.nome} installato ma disabilitato a mano: la mod non lo tocca.${altrimenti}${esecutore}`
+    if (!(await leggiConfig($, home)).dati[d.chiave]) return `Il plugin ${d.nome} non c'e e la mod non lo installa.${altrimenti} /regia ${d.nome} on lo installa.${esecutore}`
+    if (!(await haCli($, d))) return `Il plugin ${d.nome} non si installa: la CLI ${d.cli} non c'e su questo PC.${esecutore}`
     await installa($, d)
 
-    return d.fatto
+    return `${d.fatto}${esecutore}`
   } catch (errore) {
-    return `regia: plugin ${d.nome} non installato (${messaggioErrore(errore)}).${altrimenti}`
+    return `regia: plugin ${d.nome} non installato (${messaggioErrore(errore)}).${altrimenti}${esecutore}`
   }
 }

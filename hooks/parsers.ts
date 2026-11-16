@@ -3,7 +3,7 @@
 
 export type ProcessoCodex = {
   /** Assente vale `codex`. */
-  esecutore?: 'qwen'
+  esecutore?: 'qwen' | 'copilot'
   pid: number
   durataSec: number
   nome: string
@@ -55,11 +55,11 @@ export function cartellaLavoro(percorsoLog: string, nome: string): string {
   return RE_RADICE_LAVORI.test(cartella) ? `${cartella}/${nome}` : cartella
 }
 
-const RE_RADICE_LAVORI = /\/\.claude\/regia\/(codex|qwen)$/
+const RE_RADICE_LAVORI = /\/\.claude\/regia\/(codex|qwen|copilot)$/
 
-/** Di quale CLI e un log: quelli di `qwen_avvia` stanno in `~/.claude/regia/qwen/`. */
-export function esecutoreDelLog(percorsoLog: string): 'codex' | 'qwen' {
-  return cartellaDi(percorsoLog).endsWith('/.claude/regia/qwen') ? 'qwen' : 'codex'
+/** Di quale CLI e un log: quelli di `qwen_avvia` stanno in `~/.claude/regia/qwen/`, quelli di `copilot_avvia` in `~/.claude/regia/copilot/`. */
+export function esecutoreDelLog(percorsoLog: string): 'codex' | 'qwen' | 'copilot' {
+  return (RE_RADICE_LAVORI.exec(cartellaDi(percorsoLog))?.[1] ?? 'codex') as 'codex' | 'qwen' | 'copilot'
 }
 
 export function espandiTilde(percorso: string, home: string): string {
@@ -100,9 +100,9 @@ export function formattaDurata(secondi: number): string {
   return `${Math.floor(ore / 24)}g`
 }
 
-/** `gpt-6-astra` diventa `astra`, `gpt-5.5` diventa `5.5`, `claude-haiku-4-5-2025…` diventa `haiku 4.5`. */
+/** `gpt-6-astra` diventa `astra`, `gpt-5.5` diventa `5.5`, `claude-haiku-4-5-2025…` e `claude-haiku-4.5` (Copilot) diventano `haiku 4.5`. */
 export function abbreviaModello(modello: string): string {
-  const claude = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:\b|-)/.exec(modello)
+  const claude = /^claude-([a-z]+)-(\d+)(?:[-.](\d{1,2}))?(?:\b|-)/.exec(modello)
   if (claude !== null) return `${claude[1]} ${claude[2]}${claude[3] === undefined ? '' : `.${claude[3]}`}`
   const senzaMarca = modello.replace(/^gpt-/, '')
   const m = /^\d+(?:\.\d+)?-(.+)$/.exec(senzaMarca)
@@ -230,27 +230,41 @@ export function nomeLavoro(
 }
 
 const OPZIONI_QWEN = new Set(['-m', '--model', '-n', '--name', '-w', '--cwd', '--reasoning-effort', '--permission-mode'])
+const OPZIONI_COPILOT = new Set(['--model', '--effort', '--reasoning-effort', '--log-dir', '-C'])
+const RE_LOG_COPILOT = /\/\.claude\/regia\/copilot\/([^/]+)\/log$/
 
 /**
- * Un `qwen` lanciato da `qwen-esegui`: il comando e il primo della riga (o dopo `timeout <sec>`),
- * cosi un `bash -c` che ne parla non conta. Nome dal `-n`, cartella dal `-w`.
+ * Gli argomenti di `<comando>` in una riga di `ps`: il comando e il primo della riga (o dopo `timeout <sec>`),
+ * cosi un `bash -c` che ne parla non conta. `undefined` se la riga non e di quel comando.
  */
-function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
+function argomentiCli(token: readonly string[], comando: string): readonly string[] | undefined {
   const base = (t: string | undefined) => (t ?? '').replace(/^.*\//, '')
-  const posizione = base(token[0]) === 'qwen' ? 0 : base(token[0]) === 'timeout' && base(token[2]) === 'qwen' ? 2 : -1
-  if (posizione < 0) return undefined
+  const posizione = base(token[0]) === comando ? 0 : base(token[0]) === 'timeout' && base(token[2]) === comando ? 2 : -1
+
+  return posizione < 0 ? undefined : token.slice(posizione + 1)
+}
+
+/** I valori delle opzioni che interessano, scritte `--nome valore` o `--nome=valore`. */
+function valoriOpzioni(argomenti: readonly string[], opzioni: ReadonlySet<string>): Map<string, string> {
   const valori = new Map<string, string>()
-  const argomenti = token.slice(posizione + 1)
-  // Solo `qwen -p`: una sessione interattiva di qualcuno non e un lavoro.
-  if (!argomenti.some(t => t === '-p' || t === '--print')) return undefined
   for (let i = 0; i < argomenti.length; i += 1) {
     const grezzo = argomenti[i] ?? ''
     const uguale = grezzo.startsWith('--') ? grezzo.indexOf('=') : -1
     const nome = uguale > 0 ? grezzo.slice(0, uguale) : grezzo
-    if (!OPZIONI_QWEN.has(nome)) continue
+    if (!opzioni.has(nome)) continue
     const valore = uguale > 0 ? grezzo.slice(uguale + 1) : argomenti[(i += 1)]
     if (valore !== undefined) valori.set(nome, valore)
   }
+
+  return valori
+}
+
+/** Un `qwen` lanciato da `qwen-esegui`. Nome dal `-n`, cartella dal `-w`. */
+function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
+  const argomenti = argomentiCli(token, 'qwen')
+  // Solo `qwen -p`: una sessione interattiva di qualcuno non e un lavoro.
+  if (argomenti === undefined || !argomenti.some(t => t === '-p' || t === '--print')) return undefined
+  const valori = valoriOpzioni(argomenti, OPZIONI_QWEN)
   const cartella = valori.get('-w') ?? valori.get('--cwd')
 
   return {
@@ -264,6 +278,32 @@ function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[])
   }
 }
 
+/**
+ * Un `copilot` lanciato da `copilot-esegui`: il prompt entra da stdin, quindi il lavoro si riconosce da
+ * `--log-dir ~/.claude/regia/copilot/<nome>/log` (che c'e anche in una ripresa, e dice il nome). Conta anche un
+ * `copilot -p` lanciato a mano; una sessione interattiva di qualcuno no. Cartella dal `-C`.
+ */
+function leggiRigaCopilot(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
+  const argomenti = argomentiCli(token, 'copilot')
+  if (argomenti === undefined) return undefined
+  const valori = valoriOpzioni(argomenti, OPZIONI_COPILOT)
+  const nome = RE_LOG_COPILOT.exec(valori.get('--log-dir') ?? '')?.[1]
+  const isPrompt = argomenti.some(t => t === '-p' || t === '--prompt' || t.startsWith('--prompt='))
+  if (nome === undefined && !isPrompt) return undefined
+  const cartella = valori.get('-C')
+  const effort = valori.get('--effort') ?? valori.get('--reasoning-effort')
+
+  return {
+    esecutore: 'copilot',
+    pid,
+    durataSec,
+    nome: nome ?? (cartella === undefined ? `copilot-${pid}` : ultimoSegmento(cartella)),
+    ...(valori.has('--model') ? { modello: valori.get('--model') } : {}),
+    ...(effort === undefined ? {} : { effort }),
+    ...(cartella === undefined ? {} : { cartella }),
+  }
+}
+
 function leggiRigaPs(riga: string): ProcessoCodex | undefined {
   const m = /^\s*(\d+)\s+(\S+)\s+(.*)$/.exec(riga)
   if (m === null) return undefined
@@ -272,7 +312,9 @@ function leggiRigaPs(riga: string): ProcessoCodex | undefined {
   const posizione = token.findIndex(
     (t, i) => t === 'exec' && /(^|\/)codex(\.js)?$/.test(token[i - 1] ?? ''),
   )
-  if (posizione < 0) return durataSec === undefined ? undefined : leggiRigaQwen(Number(m[1]), durataSec, token)
+  if (posizione < 0) {
+    return durataSec === undefined ? undefined : leggiRigaQwen(Number(m[1]), durataSec, token) ?? leggiRigaCopilot(Number(m[1]), durataSec, token)
+  }
   if (durataSec === undefined) return undefined
   if (/(^|\/)e?grep$/.test(token[0] ?? '')) return undefined
 
@@ -301,7 +343,7 @@ export function parsePs(uscita: string): ProcessoCodex[] {
   const viste = new Set<string>()
 
   return trovati.filter(p => {
-    const chiave = p.esecutore === 'qwen' ? `qwen:${p.nome}` : (p.output ?? p.cartella ?? `pid:${p.pid}`)
+    const chiave = p.esecutore === undefined ? (p.output ?? p.cartella ?? `pid:${p.pid}`) : `${p.esecutore}:${p.nome}`
     if (viste.has(chiave)) return false
     viste.add(chiave)
 

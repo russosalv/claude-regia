@@ -1,5 +1,7 @@
 // Registro della scaletta e config opzionale: validazione pura.
 
+import { ESECUTORI_CLI } from './codex'
+import type { EsecutoreCli } from './codex'
 import { espandiTilde } from './parsers'
 
 export type StatoRegistro = 'scaletta' | 'in_corso' | 'fatto' | 'bloccato'
@@ -31,6 +33,8 @@ export type ConfigRegia = {
   modelli: Readonly<Record<string, string>>
   /** Modello di `codex_avvia` quando la chiamata non lo dice; senza, decide Codex. */
   codexModello?: string
+  /** Modello di `copilot_avvia` quando la chiamata non lo dice; senza, decide Copilot. */
+  copilotModello?: string
   /** Quanto la conversazione principale e tenuta a delegare (`/regia orchestra`). */
   orchestra: ModoOrchestra
   /** Regole di sobrieta nei prompt dei delegati (`/regia savings on|off`). */
@@ -52,6 +56,16 @@ export type ConfigRegia = {
   controlloMinuti: number[]
   /** Il modello della principale in modalita quick (`/regia quick`). */
   quickModello: string
+  /** Gli esecutori esterni che la mod puo usare (`/regia executors`); lista vuota: lavora solo Claude. */
+  esecutori: EsecutoreCli[]
+  /** Chi sviluppa: solo Claude, Claude con gli esterni di rinforzo, o gli esterni per tutto cio che e autosufficiente (`/regia team`). */
+  squadra: Squadra
+  /** In `mista`, la parte piu grande dei compiti assegnati dalla mod in uno sciame che puo andare agli esterni, in percento (`/regia team <numero>`). */
+  squadraQuota: number
+  /** La mod compatta la principale oltre la soglia e da le sue istruzioni a ogni compattazione (`/regia compact on|off`). */
+  compatta: boolean
+  /** Riempimento del contesto, in percento, oltre cui la mod compatta a fine turno (`/regia compact <numero>`). */
+  compattaSoglia: number
 }
 
 export const AGGIORNAMENTO_PREDEFINITO_SEC = 15
@@ -61,9 +75,15 @@ export const AGGIORNAMENTO_MASSIMO_SEC = 3600
 export const LOG_CODEX_REGIA = '.claude/regia/codex/esegui.log'
 /** Il log dei lavori lanciati da `qwen_avvia`, sempre tra le fonti. */
 export const LOG_QWEN_REGIA = '.claude/regia/qwen/esegui.log'
+/** Il log dei lavori lanciati da `copilot_avvia`, sempre tra le fonti. */
+export const LOG_COPILOT_REGIA = '.claude/regia/copilot/esegui.log'
 export const SCIAME_PARALLELO_PREDEFINITO = 4
 export const MODI_ORCHESTRA = ['stretta', 'guida', 'off'] as const
 export type ModoOrchestra = (typeof MODI_ORCHESTRA)[number]
+export const SQUADRE = ['claude', 'mista', 'esterni'] as const
+export type Squadra = (typeof SQUADRE)[number]
+export const SQUADRA_PREDEFINITA: Squadra = 'mista'
+export const QUOTA_SQUADRA_PREDEFINITA = 50
 
 const STATI_REGISTRO: readonly string[] = [
   'scaletta',
@@ -174,6 +194,20 @@ export const STALLO_PREDEFINITO_MIN = 30
 export const ATTESA_PREDEFINITA_MIN = 45
 export const CONTROLLO_PREDEFINITO_MIN: readonly number[] = [15, 30, 60]
 export const QUICK_MODELLO_PREDEFINITO = 'sonnet'
+export const SOGLIA_COMPATTA_PREDEFINITA = 60
+export const SOGLIA_COMPATTA_MINIMA = 30
+export const SOGLIA_COMPATTA_MASSIMA = 90
+
+/** Vero per una soglia di compattazione valida: un intero fra la minima e la massima. */
+export const isSogliaCompatta = (n: unknown): n is number =>
+  typeof n === 'number' && Number.isInteger(n) && n >= SOGLIA_COMPATTA_MINIMA && n <= SOGLIA_COMPATTA_MASSIMA
+
+function campoSogliaCompatta(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: SOGLIA_COMPATTA_PREDEFINITA, avvisi: [] }
+  if (isSogliaCompatta(grezzo)) return { valore: grezzo, avvisi: [] }
+
+  return { valore: SOGLIA_COMPATTA_PREDEFINITA, avvisi: [`config.json: "compattaSoglia" deve essere un intero da ${SOGLIA_COMPATTA_MINIMA} a ${SOGLIA_COMPATTA_MASSIMA}`] }
+}
 
 function campoStallo(grezzo: unknown): Campo<number> {
   if (grezzo === undefined) return { valore: STALLO_PREDEFINITO_MIN, avvisi: [] }
@@ -207,6 +241,29 @@ function campoOrchestra(grezzo: unknown): Campo<ModoOrchestra> {
   return { valore: 'guida', avvisi: grezzo === undefined ? [] : [`config.json: "orchestra" deve essere ${Object.values(NOME_MODO).join(', ')}`] }
 }
 
+/** Il nome con cui comandi e config chiamano una squadra. I nomi italiani restano validi. */
+export const NOME_SQUADRA: Readonly<Record<Squadra, string>> = { claude: 'claude', mista: 'mixed', esterni: 'external' }
+
+/** La squadra scritta in un comando o in config, in inglese o in italiano. */
+export const leggiSquadra = (grezzo: unknown): Squadra | undefined => SQUADRE.find(s => s === grezzo || NOME_SQUADRA[s] === grezzo)
+
+function campoSquadra(grezzo: unknown): Campo<Squadra> {
+  const squadra = leggiSquadra(grezzo)
+  if (squadra !== undefined) return { valore: squadra, avvisi: [] }
+
+  return { valore: SQUADRA_PREDEFINITA, avvisi: grezzo === undefined ? [] : [`config.json: "squadra" deve essere ${Object.values(NOME_SQUADRA).join(', ')}`] }
+}
+
+/** Vero per una quota degli esterni valida: un intero da 0 a 100. */
+export const isQuotaSquadra = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 100
+
+function campoQuotaSquadra(grezzo: unknown): Campo<number> {
+  if (grezzo === undefined) return { valore: QUOTA_SQUADRA_PREDEFINITA, avvisi: [] }
+  if (isQuotaSquadra(grezzo)) return { valore: grezzo, avvisi: [] }
+
+  return { valore: QUOTA_SQUADRA_PREDEFINITA, avvisi: ['config.json: "squadraQuota" deve essere un intero da 0 a 100'] }
+}
+
 function campoParallelo(grezzo: unknown): Campo<number> {
   if (grezzo === undefined) return { valore: SCIAME_PARALLELO_PREDEFINITO, avvisi: [] }
   if (typeof grezzo === 'number' && Number.isInteger(grezzo) && grezzo >= 1 && grezzo <= 16) return { valore: grezzo, avvisi: [] }
@@ -221,9 +278,21 @@ function campoTesto(grezzo: unknown, nome: string, predefinito?: string): Campo<
   return { valore: predefinito, avvisi: [`config.json: "${nome}" non e un nome valido`] }
 }
 
-/** I log di `codex_avvia` e `qwen_avvia` in coda ai log scelti, una volta sola. */
+/** Gli esecutori esterni accesi: i nomi sconosciuti si tolgono, e si dice quali. */
+function campoEsecutori(grezzo: unknown): Campo<EsecutoreCli[]> {
+  if (grezzo === undefined) return { valore: [...ESECUTORI_CLI], avvisi: [] }
+  const validi = ESECUTORI_CLI.join(', ')
+  if (!Array.isArray(grezzo)) return { valore: [...ESECUTORI_CLI], avvisi: [`config.json: "esecutori" deve essere una lista fra ${validi}`] }
+  const nomi = grezzo.map(n => (typeof n === 'string' ? n.trim().toLowerCase() : n))
+  const ignoti = nomi.filter(n => !ESECUTORI_CLI.some(e => e === n))
+  const avvisi = ignoti.length === 0 ? [] : [`config.json: in "esecutori" tolti i nomi sconosciuti ${ignoti.map(n => JSON.stringify(n)).join(', ')} (validi: ${validi})`]
+
+  return { valore: ESECUTORI_CLI.filter(e => nomi.includes(e)), avvisi }
+}
+
+/** I log di `codex_avvia`, `qwen_avvia` e `copilot_avvia` in coda ai log scelti, una volta sola. */
 function conLogRegia(logs: readonly string[], home: string): string[] {
-  const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA].map(l => `${home}/${l}`)
+  const regia = [LOG_CODEX_REGIA, LOG_QWEN_REGIA, LOG_COPILOT_REGIA].map(l => `${home}/${l}`)
 
   return [...logs, ...regia.filter(r => !logs.includes(r))]
 }
@@ -249,6 +318,11 @@ export function parseConfig(
     attesaMinuti: ATTESA_PREDEFINITA_MIN,
     controlloMinuti: [...CONTROLLO_PREDEFINITO_MIN],
     quickModello: QUICK_MODELLO_PREDEFINITO,
+    esecutori: [...ESECUTORI_CLI],
+    squadra: SQUADRA_PREDEFINITA,
+    squadraQuota: QUOTA_SQUADRA_PREDEFINITA,
+    compatta: true,
+    compattaSoglia: SOGLIA_COMPATTA_PREDEFINITA,
   }
   if (typeof radice !== 'object' || radice === null || Array.isArray(radice)) {
     return { config: predefinita, avvisi: ['config.json: atteso un oggetto'] }
@@ -259,6 +333,7 @@ export function parseConfig(
   const modelli = campoModelli(o.modelli)
   const instradamento = campoBooleano(o.instradamento, 'instradamento', true)
   const codexModello = campoTesto(o.codexModello, 'codexModello')
+  const copilotModello = campoTesto(o.copilotModello, 'copilotModello')
   const orchestra = campoOrchestra(o.orchestra)
   const risparmio = campoBooleano(o.risparmio, 'risparmio', true)
   const ponytail = campoBooleano(o.ponytail, 'ponytail', true)
@@ -270,6 +345,11 @@ export function parseConfig(
   const attesa = campoAttesa(o.attesaMinuti)
   const controllo = campoControllo(o.controlloMinuti)
   const quick = campoTesto(o.quickModello, 'quickModello', QUICK_MODELLO_PREDEFINITO)
+  const esecutori = campoEsecutori(o.esecutori)
+  const squadra = campoSquadra(o.squadra)
+  const quota = campoQuotaSquadra(o.squadraQuota)
+  const compatta = campoBooleano(o.compatta, 'compatta', true)
+  const soglia = campoSogliaCompatta(o.compattaSoglia)
   const config: ConfigRegia = {
     codexLogs: logs.valore === undefined ? predefinita.codexLogs : conLogRegia(logs.valore, home),
     aggiornamentoSecondi: secondi.valore ?? predefinita.aggiornamentoSecondi,
@@ -286,9 +366,15 @@ export function parseConfig(
     attesaMinuti: attesa.valore,
     controlloMinuti: controllo.valore,
     quickModello: quick.valore ?? QUICK_MODELLO_PREDEFINITO,
+    esecutori: esecutori.valore,
+    squadra: squadra.valore,
+    squadraQuota: quota.valore,
+    compatta: compatta.valore,
+    compattaSoglia: soglia.valore,
     ...(codexModello.valore === undefined ? {} : { codexModello: codexModello.valore }),
+    ...(copilotModello.valore === undefined ? {} : { copilotModello: copilotModello.valore }),
   }
-  const avvisi = [logs, secondi, modelli, instradamento, codexModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick].flatMap(c => c.avvisi)
+  const avvisi = [logs, secondi, modelli, instradamento, codexModello, copilotModello, orchestra, risparmio, ponytail, pluginCodex, pluginQwen, parallelo, sveglia, stallo, attesa, controllo, quick, esecutori, squadra, quota, compatta, soglia].flatMap(c => c.avvisi)
 
   return { config, avvisi }
 }

@@ -3,9 +3,13 @@
 
 import type { EngineInterface, Timer } from 'claude-code'
 
-import { DESCRIZIONE_AVVIA, DESCRIZIONE_QWEN_AVVIA, NOME_TOOL_AVVIA, NOME_TOOL_QWEN_AVVIA, installaScript } from './codex-avvia'
-import { SCHEMA_CODEX_AVVIA, SCHEMA_QWEN_AVVIA } from './codex'
-import { DESCRIZIONE_QWEN_RIPRENDI, DESCRIZIONE_RIPRENDI, NOME_TOOL_QWEN_RIPRENDI, NOME_TOOL_RIPRENDI, SCHEMA_RIPRENDI } from './codex-riprendi'
+import {
+  DESCRIZIONE_AVVIA, DESCRIZIONE_COPILOT_AVVIA, DESCRIZIONE_QWEN_AVVIA, NOME_TOOL_AVVIA, NOME_TOOL_COPILOT_AVVIA, NOME_TOOL_QWEN_AVVIA, installaScript,
+} from './codex-avvia'
+import { SCHEMA_CODEX_AVVIA, SCHEMA_COPILOT_AVVIA, SCHEMA_QWEN_AVVIA } from './codex'
+import {
+  DESCRIZIONE_COPILOT_RIPRENDI, DESCRIZIONE_QWEN_RIPRENDI, DESCRIZIONE_RIPRENDI, NOME_TOOL_COPILOT_RIPRENDI, NOME_TOOL_QWEN_RIPRENDI, NOME_TOOL_RIPRENDI, SCHEMA_RIPRENDI,
+} from './codex-riprendi'
 import { leggiHome } from './fonti'
 import { messaggioErrore } from './parsers'
 import { DESCRIZIONE_DOMANDA, SCHEMA_DOMANDA } from './domande'
@@ -18,6 +22,8 @@ const STRUMENTI = [
   { name: NOME_TOOL_RIPRENDI, description: DESCRIZIONE_RIPRENDI, inputSchema: SCHEMA_RIPRENDI },
   { name: NOME_TOOL_QWEN_AVVIA, description: DESCRIZIONE_QWEN_AVVIA, inputSchema: SCHEMA_QWEN_AVVIA },
   { name: NOME_TOOL_QWEN_RIPRENDI, description: DESCRIZIONE_QWEN_RIPRENDI, inputSchema: SCHEMA_RIPRENDI },
+  { name: NOME_TOOL_COPILOT_AVVIA, description: DESCRIZIONE_COPILOT_AVVIA, inputSchema: SCHEMA_COPILOT_AVVIA },
+  { name: NOME_TOOL_COPILOT_RIPRENDI, description: DESCRIZIONE_COPILOT_RIPRENDI, inputSchema: SCHEMA_RIPRENDI },
   { name: 'posta_invia', description: DESCRIZIONE_INVIA, inputSchema: SCHEMA_INVIA },
   { name: 'posta_leggi', description: DESCRIZIONE_LEGGI, inputSchema: SCHEMA_LEGGI },
   { name: 'scaletta_scrivi', description: DESCRIZIONE_SCALETTA, inputSchema: SCHEMA_SCALETTA },

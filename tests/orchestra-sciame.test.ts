@@ -255,7 +255,7 @@ test('modo guida: la regola nel prompt, nessun rifiuto. off: niente', async ($, 
   expect((await scrittura($)).deny).toBeUndefined()
   const r = await $.prompt.compose({ ...INPUT_PROMPT, surfaces: ['terminal'], tools: ['Agent'], traits: [] } as never)
   expect(r.sections.map(s => s.id)).toEqual(['intro', 'regia:orchestra'])
-  expect(r.sections[1]?.text).toBe(TESTI_ORCHESTRA.medio)
+  expect(r.sections[1]?.text).toBe(TESTI_ORCHESTRA.medio.mista)
 })
 
 test('senza superficie (claude -p, SDK) o senza Agent la regola non si applica', async ($, on) => {
@@ -304,7 +304,7 @@ test('/regia doctor dice che cosa e attivo e perche non si applica', () => {
   expect(testoDoctor({ ...dati, haSuperficie: false })).toContain('NON si applica qui: sessione senza superficie')
   expect(testoDoctor({ ...dati, codex: undefined, repo: undefined })).toContain('Codex: NON trovato')
   expect(testoDoctor({ ...dati, config: parseConfig({ orchestra: 'off' }, HOME).config })).not.toContain('Attiva in questa')
-  expect(rigaModi(dati.config, { profilo: 'long', isVia: true })).toBe('Mode long (away) · orchestra guide · models on · savings on · wake on — /regia doctor per i dettagli')
+  expect(rigaModi(dati.config, { profilo: 'long', isVia: true })).toBe('Mode long (away) · orchestra guide · team mixed 50% · models on · savings on · wake on · compact 60% — /regia doctor per i dettagli')
 })
 
 test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', async ($, on) => {
@@ -314,7 +314,7 @@ test('/regia doctor risponde dal comando, /regia riporta la riga dei modi', asyn
   const comando = (args: string) => $.command.run({ command: 'regia', args, origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 100 } })
 
   expect((await comando('doctor')).text).toContain('Orchestra: GUIDE')
-  expect((await comando('')).text).toContain('Mode medium · orchestra guide · models on · savings on')
+  expect((await comando('')).text).toContain('Mode medium · orchestra guide · team mixed 50% · models on · savings on')
 })
 
 test('lo stato di Ponytail e gli argomenti del comando', () => {

@@ -1,13 +1,18 @@
 // `/regia models|orchestra|savings|wake [valore]`: mostra un'opzione e la cambia,
 // scrivendola nella config. Vale subito: la config si rilegge a ogni uso.
+// `/regia executors [codex|qwen|copilot on|off]`: lo stesso per gli esecutori esterni.
+// `/regia team [claude|mixed|external|<quota>]`: lo stesso per la squadra e la sua quota.
 
 import type { EngineInterface } from 'claude-code'
 
+import { ESECUTORI_CLI } from './codex'
+import type { EsecutoreCli } from './codex'
+import { leggiCli, statoEsecutori, testoEsecutori, testoSquadra } from './esecutori'
 import { leggiConfig, leggiHome } from './fonti'
 import { isPonytailAttivo } from './orchestra'
 import { messaggioErrore } from './parsers'
-import { MODI_ORCHESTRA, NOME_MODO } from './registro'
-import type { ConfigRegia } from './registro'
+import { MODI_ORCHESTRA, NOME_MODO, NOME_SQUADRA, isQuotaSquadra, leggiSquadra } from './registro'
+import type { ConfigRegia, Squadra } from './registro'
 
 type Opzione = { chiave: 'instradamento' | 'orchestra' | 'risparmio' | 'sveglia'; valori: Readonly<Record<string, boolean | string>> }
 
@@ -39,7 +44,7 @@ export function leggiArgomentiOpzione(args: string): ArgomentiOpzione | undefine
 }
 
 /** La config con una chiave cambiata e il resto com'era. */
-export async function scriviChiave($: EngineInterface, home: string, chiave: string, valore: boolean | string): Promise<void> {
+export async function scriviChiave($: EngineInterface, home: string, chiave: string, valore: boolean | number | string | readonly string[]): Promise<void> {
   const percorso = `${home}/.claude/regia/config.json`
   let radice: Record<string, unknown> = {}
   if (await $.fs.exists(percorso)) {
@@ -102,5 +107,75 @@ export async function comandoOpzione($: EngineInterface, a: ArgomentiOpzione): P
     return [descrivi(a.nome, dati, await isPonytailAttivo($)), ...avvisi.map(x => `Attenzione: ${x}`)].join('\n')
   } catch (errore) {
     return `regia: non riesco a cambiare ${a.nome} (${messaggioErrore(errore)}).`
+  }
+}
+
+export type ArgomentiEsecutori = { esecutore?: EsecutoreCli; valore?: boolean; isSbagliato?: boolean }
+
+/** `executors`, `executors codex off`, `esecutori qwen on`; `undefined` se la prima parola non e questo comando. */
+export function leggiArgomentiEsecutori(args: string): ArgomentiEsecutori | undefined {
+  const [parola, nome, valore, ...resto] = args.trim().toLowerCase().split(/\s+/)
+  if (parola !== 'executors' && parola !== 'esecutori') return undefined
+  if (nome === undefined) return {}
+  const esecutore = ESECUTORI_CLI.find(e => e === nome)
+  if (esecutore === undefined || (valore !== 'on' && valore !== 'off') || resto.length > 0) return { isSbagliato: true }
+
+  return { esecutore, valore: valore === 'on' }
+}
+
+/** Il testo di `/regia executors`: accende o spegne un esecutore e dice chi e usabile adesso. Non lancia. */
+export async function comandoEsecutori($: EngineInterface, a: ArgomentiEsecutori): Promise<string> {
+  try {
+    const home = await leggiHome($)
+    if (home === undefined) return 'regia: HOME non definita, non trovo la config.'
+    if (a.isSbagliato === true) return `regia: /regia executors mostra gli esecutori; /regia executors ${ESECUTORI_CLI.join('|')} on|off ne accende o spegne uno.`
+    const { esecutore, valore } = a
+    if (esecutore !== undefined && valore !== undefined) {
+      const accesi = (await leggiConfig($, home)).dati.esecutori
+      await scriviChiave($, home, 'esecutori', ESECUTORI_CLI.filter(e => (e === esecutore ? valore : accesi.includes(e))))
+    }
+    const { dati, avvisi } = await leggiConfig($, home)
+
+    // Senza la risposta ricordata: il comando dice che cosa c'e adesso.
+    return [testoEsecutori(statoEsecutori(dati.esecutori, await leggiCli($, true))), ...avvisi.map(x => `Attenzione: ${x}`)].join('\n')
+  } catch (errore) {
+    return `regia: non riesco a cambiare gli esecutori (${messaggioErrore(errore)}).`
+  }
+}
+
+export type ArgomentiSquadra =
+  | { azione: 'mostra' | 'sbagliato' }
+  | { azione: 'squadra'; valore: Squadra }
+  | { azione: 'quota'; valore: number }
+
+/** `team`, `team mixed`, `squadra esterni`, `team 30`; `undefined` se la prima parola non e questo comando. */
+export function leggiArgomentiSquadra(args: string): ArgomentiSquadra | undefined {
+  const [parola, valore, ...resto] = args.trim().toLowerCase().split(/\s+/)
+  if (parola !== 'team' && parola !== 'squadra') return undefined
+  if (valore === undefined) return { azione: 'mostra' }
+  if (resto.length > 0) return { azione: 'sbagliato' }
+  const squadra = leggiSquadra(valore)
+  if (squadra !== undefined) return { azione: 'squadra', valore: squadra }
+  const quota = /^\d+%?$/.test(valore) ? Number.parseInt(valore, 10) : undefined
+
+  return isQuotaSquadra(quota) ? { azione: 'quota', valore: quota } : { azione: 'sbagliato' }
+}
+
+export const USO_SQUADRA = `regia: /regia team mostra la squadra; /regia team ${Object.values(NOME_SQUADRA).join('|')} la cambia; /regia team <numero> mette la quota degli esterni, da 0 a 100.`
+
+/** Il testo di `/regia team`: cambia la squadra o la quota e dice che cosa vale adesso. Non lancia. */
+export async function comandoSquadra($: EngineInterface, a: ArgomentiSquadra): Promise<string> {
+  try {
+    const home = await leggiHome($)
+    if (home === undefined) return 'regia: HOME non definita, non trovo la config.'
+    if (a.azione === 'sbagliato') return USO_SQUADRA
+    // In config la squadra si scrive col nome dei comandi, come `orchestra`.
+    if (a.azione === 'squadra') await scriviChiave($, home, 'squadra', NOME_SQUADRA[a.valore])
+    if (a.azione === 'quota') await scriviChiave($, home, 'squadraQuota', a.valore)
+    const { dati, avvisi } = await leggiConfig($, home)
+
+    return [testoSquadra(dati), ...avvisi.map(x => `Attenzione: ${x}`)].join('\n')
+  } catch (errore) {
+    return `regia: non riesco a cambiare la squadra (${messaggioErrore(errore)}).`
   }
 }

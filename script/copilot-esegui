@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Lancia un lavoro GitHub Copilot CLI per la mod regia (tool copilot_avvia): nice, un solo tentativo, righe di inizio e
+# fine in esegui.log. Il prompt entra da stdin (<nome>.prompt.md): niente limite di argv e niente prompt in `ps`.
+# Con REGIA_RIPRENDI=<id sessione copilot> riprende quella sessione con il messaggio di <nome>.riprendi.md (copilot_riprendi).
+# Permesso: `auto` scrive file e lancia comandi (--allow-all-tools --allow-all-paths); `default` legge soltanto
+# (--deny-tool=write e nessun permesso in piu: senza una persona, cio che chiede un'approvazione viene rifiutato).
+# -s: su stdout solo la risposta. --no-ask-user: nessuno risponde alle domande.
+# --log-dir: i log di copilot stanno nella cartella del lavoro, e a `ps` dicono il nome (in una ripresa non c'e altro).
+# I flag vengono dalla documentazione di Copilot CLI (cli-command-reference, cli-programmatic-reference): non provati qui.
+# Uso: copilot-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo|""> <esegui.log> <permesso> [ramo-base]
+set -u
+# copilot installato con nvm non e nel PATH dei processi lanciati dalla mod: si cerca l'ultimo nvm (come per codex).
+if ! command -v copilot >/dev/null 2>&1; then
+  for d in $(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | sort -V -r); do
+    if [ -x "$d/copilot" ]; then PATH="$d:$PATH"; export PATH; break; fi
+  done
+fi
+n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; P=${7:-auto}; B=${8:-main}
+R=${REGIA_RIPRENDI:-}
+# Tetto di sicurezza (secondi) se la mod non gira: la sorveglianza ferma comunque chi tace da stalloMinuti.
+T=${REGIA_COPILOT_TIMEOUT:-14400}
+cd "$D" || exit 1
+# Senza modello decide Copilot (COPILOT_MODEL, la sua config, il suo predefinito); senza sforzo pure.
+modello=(); [ -n "$M" ] && modello=(--model "$M")
+sforzo=(); [ -n "$S" ] && sforzo=(--effort "$S")
+# Tutto cio che non e `auto` legge soltanto.
+permesso=(--deny-tool=write); [ "$P" = auto ] && permesso=(--allow-all-tools --allow-all-paths)
+# macOS non ha timeout: senza, resta la sorveglianza.
+tetto=(); command -v timeout >/dev/null 2>&1 && tetto=(timeout "$T")
+export REGIA_NOME="$n"
+echo $$ > "$n.pid"
+echo "$P" > "$n.permesso"
+echo "$W" > "$n.cartella"
+mkdir -p log
+if [ -n "$R" ]; then
+  # Il giro di prima resta in <nome>.storico.log; l'esito vuoto dice se questo giro ha risposto.
+  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
+  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
+  rm -f "$n.esito.md"
+  # --resume vuole il valore attaccato; niente -C: la sessione si riprende dalla sua cartella.
+  sessione=(--resume="$R"); entrata="$n.riprendi.md"
+else
+  # L'id lo scegliamo noi (un UUID nuovo apre una sessione nuova): serve subito a copilot_riprendi e alla sorveglianza.
+  id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
+  echo "$id" > "$n.sessione"
+  sessione=(--session-id "$id" -C "$W"); entrata="$n.prompt.md"
+fi
+echo "$(date +%H:%M) inizio $n" >> "$L"
+# ${x[@]+"${x[@]}"}: con set -u la bash 3.2 di macOS rifiuta un array vuoto.
+( cd "$W" && nice -n 10 ${tetto[@]+"${tetto[@]}"} copilot ${modello[@]+"${modello[@]}"} ${sforzo[@]+"${sforzo[@]}"} "${permesso[@]}" --no-ask-user -s --log-dir "$D/log" "${sessione[@]}" < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
+rc=$?
+# Una risposta vuota con exit 0 e un guasto (API, rete, accesso): meglio che lo sciame lo rilanci.
+[ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
+commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
+echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
+rm -f "$n.pid"

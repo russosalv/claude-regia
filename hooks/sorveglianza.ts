@@ -14,7 +14,8 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { RegiaRiga, RegiaSnapshot } from '../types/index'
-import { intestazioneLog } from './codex'
+import { NOME_CLI, intestazioneLog } from './codex'
+import type { EsecutoreCli } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
 import { CONTROLLO_PREDEFINITO_MIN } from './registro'
 import { cartellaDi, messaggioErrore } from './parsers'
@@ -37,7 +38,8 @@ export type StatoPrincipale = { isOccupata: boolean; fineMs: number; motivo?: st
 export type Sveglie = { impronta: string; tentativi: number; ultimaMs: number; isEsaurita: boolean; controlli: number }
 
 
-const isAgente = (r: RegiaRiga) => r.fonte === 'claude' || r.fonte === 'codex'
+/** Una riga del pane che e un agente al lavoro (Claude, Codex, Qwen, Copilot) e non una voce del piano. */
+export const isAgente = (r: RegiaRiga): boolean => r.fonte === 'claude' || r.fonte === 'codex'
 
 /** Le voci del piano ancora da chiudere: scaletta e in corso del registro. */
 export function vociAperte(s: RegiaSnapshot): RegiaRiga[] {
@@ -145,6 +147,8 @@ let finitiVisti: Set<string> | undefined
 let finitiNuovi: string[] = []
 /** La regia ha chiesto un turno e la principale non l'ha ancora iniziato. */
 let isSvegliaInAttesa = false
+/** La mod sta compattando la conversazione (`compatta-motore.ts`): niente sveglie finche non ha finito. */
+let isCompattazione = false
 
 export function notaInizioPrincipale(): void {
   principale.isOccupata = true
@@ -158,11 +162,19 @@ export function notaFinePrincipale(oraMs: number, motivo: string): void {
   principale.motivo = motivo
 }
 
+/** La compattazione fatta dalla mod inizia o finisce: nel mezzo la sorveglianza non manda turni. */
+export function notaCompattazione(isInCorso: boolean): void {
+  isCompattazione = isInCorso
+}
+
+/** Vero se la principale ha un turno in corso, o gliene e stato appena chiesto uno. */
+export const isPrincipaleOccupata = (): boolean => principale.isOccupata
+
 export function notaPassoAgente(agentId: string, oraMs: number): void {
   ultimoPasso.set(agentId, oraMs)
 }
 
-/** Uccide i `codex exec` di un lavoro: lo script scrive `fine` con exit diverso da 0. */
+/** Uccide i processi (`codex exec`, `qwen`, `copilot`) di un lavoro: lo script scrive `fine` con exit diverso da 0. */
 async function uccidiCodex($: EngineInterface, nome: string): Promise<boolean> {
   const pids = (await leggiProcessi($)).dati?.filter(p => p.nome === nome).map(p => String(p.pid)) ?? []
   if (pids.length === 0) return false
@@ -208,7 +220,24 @@ async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, no
   return Math.max(stat.mtimeMs, sessione?.mtimeMs ?? 0)
 }
 
-/** Gli agenti in corso fermi da troppo: i Codex e i Qwen li ferma, i Claude li elenca. */
+/**
+ * L'ultimo segno di vita di un Copilot. Il log (stderr) resta fermo: si guardano l'esito (stdout) e il registro
+ * degli eventi della sessione (`~/.copilot/session-state/<id>/events.jsonl`, l'id sta in `<nome>.sessione`).
+ */
+async function ultimoSegnoCopilot($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
+  const stat = await $.fs.stat(log).catch(() => undefined)
+  if (stat === undefined) return undefined
+  const cartella = cartellaDi(log)
+  const file = `${cartella}/${nome}.sessione`
+  const id = (await $.fs.exists(file)) ? (await $.fs.read(file)).trim() : ''
+  const radice = (await $.env.get('COPILOT_HOME')) ?? `${home}/.copilot`
+  const altri = [`${cartella}/${nome}.esito.md`, ...(/^[\w-]+$/.test(id) ? [`${radice}/session-state/${id}/events.jsonl`] : [])]
+  const tempi = await Promise.all(altri.map(p => $.fs.stat(p).then(x => x.mtimeMs, () => 0)))
+
+  return Math.max(stat.mtimeMs, ...tempi)
+}
+
+/** Gli agenti in corso fermi da troppo: i Codex, i Qwen e i Copilot li ferma, i Claude li elenca. */
 async function controllaStalli($: EngineInterface, home: string, inCorso: readonly RegiaRiga[], oraMs: number, stalloMs: number): Promise<string[]> {
   const righe: string[] = []
   for (const r of inCorso) {
@@ -216,16 +245,18 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
       if (segnalati.has(r.chiave)) continue
       const log = await $.fs.stat(r.fileLog).catch(() => undefined)
       if (log === undefined || oraMs - log.mtimeMs < stalloMs) continue
-      const isQwen = r.esecutore === 'qwen'
-      const cli = isQwen ? 'Qwen' : 'Codex'
-      const segno = isQwen ? await ultimoSegnoQwen($, home, r.fileLog, r.nome) : await ultimoSegnoCodex($, home, r.fileLog)
+      const esecutore: EsecutoreCli = r.esecutore === 'qwen' || r.esecutore === 'copilot' ? r.esecutore : 'codex'
+      const cli = NOME_CLI[esecutore]
+      const segno = esecutore === 'copilot' ? await ultimoSegnoCopilot($, home, r.fileLog, r.nome)
+        : esecutore === 'qwen' ? await ultimoSegnoQwen($, home, r.fileLog, r.nome)
+          : await ultimoSegnoCodex($, home, r.fileLog)
       if (segno === undefined || oraMs - segno < stalloMs) continue
       segnalati.add(r.chiave)
       const minuti = Math.round((oraMs - segno) / 60_000)
       const isUcciso = await uccidiCodex($, r.nome)
       $.ui.toast(`regia: ${cli} ${r.nome} fermo da ${minuti} min${isUcciso ? ', fermato' : ''}`, { timeoutMs: 10_000 })
       righe.push(isUcciso
-        ? `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione ${cli} fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (${isQwen ? 'qwen_riprendi' : 'codex_riprendi'} o un nuovo lavoro).`
+        ? `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min (log e sessione ${cli} fermi), l'ho fermato. Se era di uno sciame lo rilancia lo sciame; se no rilancialo tu (${esecutore}_riprendi o un nuovo lavoro).`
         : `- ${cli} "${r.nome}": nessun segno di vita da ${minuti} min, e non e stato possibile fermarlo: fallo tu.`)
     } else if (r.fonte === 'claude' && r.agenteId !== undefined) {
       const visto = ultimoPasso.get(r.agenteId)
@@ -244,14 +275,15 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
   return righe
 }
 
-async function sveglia($: EngineInterface, testo: string): Promise<void> {
+/** Chiede un turno alla principale. Anche la ripresa dopo una compattazione passa di qui, cosi non si somma a una sveglia. */
+export async function sveglia($: EngineInterface, testo: string, nome = 'sveglia'): Promise<void> {
   // Una sveglia alla volta: la prossima solo dopo che la principale ha girato.
   principale.isOccupata = true
   isSvegliaInAttesa = true
   await $.prompt.submit({ text: testo }).catch(errore => {
     principale.isOccupata = false
     isSvegliaInAttesa = false
-    $.ui.toast(`regia: sveglia non riuscita (${messaggioErrore(errore)})`)
+    $.ui.toast(`regia: ${nome} non riuscita (${messaggioErrore(errore)})`)
   })
 }
 
@@ -298,8 +330,10 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
     fineVista = principale.fineMs
     aggiornaFiniti(s.viste.sessione.fatti.filter(isAgente), principale.isOccupata || isTurnoNuovo)
     const posta = postaNonLetta(s, principale.fineMs)
+    // Mentre la mod compatta la principale non e libera: la ripresa, se serve, la manda la compattazione.
+    const isOccupata = principale.isOccupata || isCompattazione
     const decisa = decidiSveglia({
-      oraMs, principale, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo,
+      oraMs, principale: { ...principale, isOccupata }, aperte: aperte.length, agentiInCorso: inCorso.length, impronta: impronta(s), sveglie, isTurnoNuovo,
       novita: finitiNuovi.length + posta, controlloMinuti: config.controlloMinuti,
     })
     if (decisa.sveglie.isEsaurita && !sveglie.isEsaurita) {
@@ -307,7 +341,7 @@ export async function giroSorveglianza($: EngineInterface, leggiSnapshot: () => 
       void notifica($, `Il piano e fermo: ${MASSIMO_SVEGLIE} sveglie senza progressi, serve te.`, 'piano')
     }
     if (!decisa.isDovuta) sveglie = decisa.sveglie
-    if (principale.isOccupata || principale.motivo === 'aborted' || (!decisa.isDovuta && daDire.length === 0)) return
+    if (isOccupata || principale.motivo === 'aborted' || (!decisa.isDovuta && daDire.length === 0)) return
     // La persona sta scrivendo: non le si passa davanti (la sveglia non conta).
     if ((await $.prompt.read()).text.trim() !== '') return
     sveglie = decisa.sveglie
