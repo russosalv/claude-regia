@@ -48,12 +48,12 @@ const dettaglio = atom(
   { shape: 'dettaglio-2' },
 )
 
-const NESSUNA_SCRITTURA: RegiaScrittura = { a: '', etichetta: '', modo: 'posta' }
+const NESSUNA_SCRITTURA: RegiaScrittura = { a: '', etichetta: '', modo: 'posta', testo: '' }
 
 const scrittura = atom(
   { plugin: 'regia', key: 'scrittura' } as const,
   NESSUNA_SCRITTURA,
-  { shape: 'scrittura-2' },
+  { shape: 'scrittura-3' },
 )
 
 const PANE = 'regia'
@@ -190,7 +190,7 @@ function tastiDomanda($: EngineInterface, d: RegiaDomanda) {
     onOpzione: (i: number) => void rispondi($, d, `Opzione ${i + 1}: ${d.opzioni[i] ?? ''}`),
     onRispondi: () => {
       void update($, dettaglio, () => NESSUN_DETTAGLIO)
-      void update($, scrittura, () => ({ a: d.id, etichetta: d.titolo, modo: 'risposta' as const }))
+      void update($, scrittura, () => ({ a: d.id, etichetta: d.titolo, modo: 'risposta' as const, testo: '' }))
     },
     onApprofondisci: () => void approfondisciDomanda($, d),
     onDecidiTu: () => void rispondi($, d, 'Decidi tu: segui la tua raccomandazione.'),
@@ -459,8 +459,8 @@ export const register: Register = on => {
       azioni: {
         apriAgente: id => void apriAgente($, id),
         apriLog: (nome, percorso) => void apriLog($, nome, percorso),
-        scrivi: (a, etichetta) => void update($, scrittura, () => ({ a, etichetta, modo: 'posta' as const })),
-        riprendi: nome => void update($, scrittura, () => ({ a: nome, etichetta: nome, modo: 'riprendi' as const })),
+        scrivi: (a, etichetta) => void update($, scrittura, () => ({ a, etichetta, modo: 'posta' as const, testo: '' })),
+        riprendi: nome => void update($, scrittura, () => ({ a: nome, etichetta: nome, modo: 'riprendi' as const, testo: '' })),
       },
       agenteInVista: e.props.view.agentId,
       onTornaPrincipale: () => void $.ui.view({}).catch(() => undefined),
@@ -470,6 +470,7 @@ export const register: Register = on => {
       scrittura: campo,
       tastiScrittura: {
         onInvia: testo => void inviaScrittura($, testo),
+        onCambia: testo => void update($, scrittura, s => ({ ...s, testo })),
         onAnnulla: () => void update($, scrittura, () => NESSUNA_SCRITTURA),
       },
       piano: {

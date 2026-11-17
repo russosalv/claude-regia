@@ -127,6 +127,33 @@ test('dal pane: ✉ scrivi apre il campo e Invio manda da utente', async ($, on)
   await ui.unmount()
 })
 
+test('dal pane: la risposta a parole resta visibile nel campo a ogni ridisegno', async ($, on) => {
+  const amb = ambiente(on, { agenti: () => [VIVO] })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  const inviati: string[] = []
+  on('prompt.submit', (_, e) => {
+    inviati.push(e.text)
+
+    return { text: e.text } as never
+  })
+  await chiama($, 'domanda_scrivi', { id: 'uno', stato: 'aperta', titolo: 'Quale database?', contesto: 'Postgres e gia in casa, SQLite e piu semplice.', opzioni: ['Postgres', 'SQLite'] })
+  await $.session.start(avvio)
+  await amb.clock?.advance(1000)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 110 } })
+  await ui.press({ key: 'apri-domanda:uno' })
+  await ui.press({ key: 'rispondi' })
+  await ui.input({ key: 'testo-scrittura', text: 'Postgres, teniamo quello', kind: 'change' })
+  // Il battito ridisegna il pane ogni secondo mentre un agente e in corso:
+  // il campo deve mostrare ancora quanto digitato, non ridisegnarsi vuoto.
+  await amb.clock?.advance(1000)
+  expect((await ui.find({ key: 'testo-scrittura' }))?.props.value).toBe('Postgres, teniamo quello')
+
+  await ui.input({ key: 'testo-scrittura', text: 'Postgres, teniamo quello' })
+  expect(inviati.at(-1)).toContain('Postgres, teniamo quello')
+  await ui.unmount()
+})
+
 test('intestazione del log di codex exec', () => {
   const log = 'OpenAI Codex v0.163.0\n--------\nworkdir: /w/x\nmodel: gpt-6-astra\nreasoning effort: low\nsession id: 01a1-beef\n--------\nuser\n'
 

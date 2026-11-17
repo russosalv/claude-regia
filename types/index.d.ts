@@ -100,6 +100,8 @@ export type RegiaScrittura = {
   /** Come mostrarlo (nome del lavoro o del subagente). */
   etichetta: string
   modo: 'posta' | 'riprendi' | 'risposta'
+  /** Quanto digitato finora: il campo lo ridisegna a ogni giro, senza perderlo. */
+  testo: string
 }
 
 export type RegiaSnapshot = {

@@ -208,7 +208,8 @@ test('una domanda: notifica solo se la persona e via, nel pane col contesto, ris
   await comando($, 'here')
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await amb.clock?.advance(1000)
+  // La lettura periodica (15 s) porta nel pane anche la domanda scritta dopo la prima lettura.
+  await amb.clock?.advance(16_000)
   for (const larghezza of [40, 64, 100]) {
     const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: larghezza } })
     const righe = resa(await ui.drawn(), larghezza)

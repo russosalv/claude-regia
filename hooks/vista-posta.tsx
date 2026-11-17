@@ -55,7 +55,7 @@ export function sezionePosta(ui: Tavola, messaggi: readonly RegiaMessaggio[], sp
   )
 }
 
-export type TastiScrittura = { onInvia: (testo: string) => void; onAnnulla: () => void }
+export type TastiScrittura = { onInvia: (testo: string) => void; onCambia: (testo: string) => void; onAnnulla: () => void }
 
 /** Il campo aperto da `✉ scrivi` (manda da utente) o `↻ riprendi` (riprende un Codex). */
 export function campoScrittura(ui: TavolaConCampo, s: RegiaScrittura, spazio: number, tasti: TastiScrittura) {
@@ -76,7 +76,9 @@ export function campoScrittura(ui: TavolaConCampo, s: RegiaScrittura, spazio: nu
       </Box>
       {Input === undefined
         ? <Text dimColor wrap="truncate-end">{tronca('qui non si scrive: usa il terminale o il desktop', spazio - 4)}</Text>
-        : <Input key="testo-scrittura" placeholder={spiega} submitLabel="invia" autoFocus onSubmit={testo => tasti.onInvia(testo)} />}
+        // Il pane si ridisegna a ogni giro: senza `value` il motore ridisegna il
+        // campo vuoto e quanto digitato sparisce (resta solo nel buffer Invio).
+        : <Input key="testo-scrittura" placeholder={spiega} value={s.testo} submitLabel="invia" autoFocus onInput={testo => tasti.onCambia(testo)} onSubmit={testo => tasti.onInvia(testo)} />}
     </Box>
   )
 }
