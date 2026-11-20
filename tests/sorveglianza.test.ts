@@ -2,13 +2,69 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { ATTESA_MS, MASSIMO_SVEGLIE, decidiSveglia, postaNonLetta, testoSveglia } from '../hooks/sorveglianza'
+import { ATTESA_MS, MASSIMO_SVEGLIE, decidiSveglia, postaNonLetta, testoSveglia, ultimoSegnoQwen } from '../hooks/sorveglianza'
 import type { Sveglie } from '../hooks/sorveglianza'
+import type { EngineInterface } from 'claude-code'
 
 const MIN = 60_000
 const ferma = { isOccupata: false, fineMs: 0 }
 const nuove: Sveglie = { impronta: 'a', tentativi: 0, ultimaMs: 0, isEsaurita: false, controlli: 0 }
 const base = { oraMs: ATTESA_MS, principale: ferma, aperte: 3, agentiInCorso: 0, impronta: 'a', sveglie: nuove }
+
+const engineSessioni = (o: { cli?: 'qwen' | 'qoder'; tempi: Record<string, number> }) => {
+  const log = `${HOME}/.claude/regia/qwen/n/n.log`
+  const chiamate: string[] = []
+  const fileCli = `${HOME}/.claude/regia/qwen/n/n.cli`
+  const fileSessione = `${HOME}/.claude/regia/qwen/n/n.sessione`
+  const engine = {
+    fs: {
+      stat: async (path: string) => {
+        const mtimeMs = o.tempi[path]
+        if (mtimeMs === undefined) throw new Error('ENOENT')
+        return { kind: 'file', size: 1, mtimeMs, isLink: false }
+      },
+      exists: async (path: string) => path === fileSessione || (path === fileCli && o.cli !== undefined),
+      read: async (path: string) => path === fileCli ? `${o.cli}\n` : 'abc\n',
+    },
+    process: {
+      run: async (argv: readonly string[]) => {
+        const radice = argv[1] ?? ''
+        chiamate.push(radice)
+        const percorso = Object.keys(o.tempi).find(p => p.startsWith(radice) && p.endsWith('/abc.jsonl'))
+
+        return { exitCode: 0, stdout: percorso === undefined ? '' : `${percorso}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+      },
+    },
+  } as unknown as EngineInterface
+
+  return { engine, log, chiamate }
+}
+
+test('il segno di vita Qoder usa la radice registrata e non quella Qwen', async () => {
+  const qoder = `${HOME}/.qoder/projects/p/abc.jsonl`
+  const { engine, log, chiamate } = engineSessioni({ cli: 'qoder', tempi: { [`${HOME}/.claude/regia/qwen/n/n.log`]: 100, [qoder]: 250 } })
+
+  expect(await ultimoSegnoQwen(engine, HOME, log, 'n')).toBe(250)
+  expect(chiamate).toEqual([`${HOME}/.qoder/projects`])
+})
+
+test('un lavoro registrato Qwen non consulta la sessione Qoder', async () => {
+  const qwen = `${HOME}/.qwen/projects/p/abc.jsonl`
+  const qoder = `${HOME}/.qoder/projects/p/abc.jsonl`
+  const { engine, log, chiamate } = engineSessioni({ cli: 'qwen', tempi: { [`${HOME}/.claude/regia/qwen/n/n.log`]: 100, [qwen]: 180, [qoder]: 300 } })
+
+  expect(await ultimoSegnoQwen(engine, HOME, log, 'n')).toBe(180)
+  expect(chiamate).toEqual([`${HOME}/.qwen/projects`])
+})
+
+test('un lavoro Qwen legacy usa il segno piu recente fra entrambe le radici', async () => {
+  const qwen = `${HOME}/.qwen/projects/p/abc.jsonl`
+  const qoder = `${HOME}/.qoder/projects/p/abc.jsonl`
+  const { engine, log, chiamate } = engineSessioni({ tempi: { [`${HOME}/.claude/regia/qwen/n/n.log`]: 100, [qwen]: 180, [qoder]: 300 } })
+
+  expect(await ultimoSegnoQwen(engine, HOME, log, 'n')).toBe(300)
+  expect(chiamate).toEqual([`${HOME}/.qwen/projects`, `${HOME}/.qoder/projects`])
+})
 
 test('sveglia la principale ferma col piano aperto e nessuno al lavoro, dopo l\'attesa', () => {
   expect(decidiSveglia(base).isDovuta).toBe(true)

@@ -203,21 +203,29 @@ async function ultimoSegnoCodex($: EngineInterface, home: string, log: string): 
 }
 
 /**
- * L'ultimo segno di vita di un Qwen. Il log (stderr) e l'esito (stdout) restano fermi fino alla fine;
- * il file di sessione (`~/.qwen/projects/<cartella>/<id>.jsonl`, l'id sta in `<nome>.sessione`) si scrive a ogni passo.
+ * L'ultimo segno di vita di un Qwen/Qoder. La famiglia registrata in `<nome>.cli`
+ * decide quale archivio consultare; per i lavori precedenti a quel metadato si
+ * guardano entrambi e si usa il segno piu recente.
  */
-async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
+export async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
   const stat = await $.fs.stat(log).catch(() => undefined)
   if (stat === undefined) return undefined
-  const file = `${cartellaDi(log)}/${nome}.sessione`
+  const cartella = cartellaDi(log)
+  const file = `${cartella}/${nome}.sessione`
+  const fileCli = `${cartella}/${nome}.cli`
   const id = (await $.fs.exists(file)) ? (await $.fs.read(file)).trim() : ''
   if (!/^[\w-]+$/.test(id)) return stat.mtimeMs
-  const radice = `${home}/.qwen`
-  const r = await $.process.run(['find', `${radice}/projects`, '-name', `${id}.jsonl`], { timeoutMs: 15_000 })
-  const jsonl = r.stdout.split('\n').find(x => x !== '')
-  const sessione = jsonl === undefined ? undefined : await $.fs.stat(jsonl).catch(() => undefined)
+  const cli = (await $.fs.exists(fileCli)) ? (await $.fs.read(fileCli)).trim() : undefined
+  const famiglie = cli === 'qwen' || cli === 'qoder' ? [cli] : ['qwen', 'qoder']
+  const tempi = await Promise.all(famiglie.map(async famiglia => {
+    const r = await $.process.run(['find', `${home}/.${famiglia}/projects`, '-name', `${id}.jsonl`], { timeoutMs: 15_000 })
+    const jsonl = r.stdout.split('\n').find(x => x !== '')
+    const sessione = jsonl === undefined ? undefined : await $.fs.stat(jsonl).catch(() => undefined)
 
-  return Math.max(stat.mtimeMs, sessione?.mtimeMs ?? 0)
+    return sessione?.mtimeMs ?? 0
+  }))
+
+  return Math.max(stat.mtimeMs, ...tempi)
 }
 
 /**

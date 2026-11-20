@@ -90,14 +90,21 @@ test('parsePs riconosce un qwen lanciato dallo script, anche dietro timeout, e n
     ` 500 01:10 timeout 14400 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --strict-mcp-config --session-id abc -n sciame-a -w ${WORKTREE} -p`,
     ` 501 01:10 qwen -m qwen3-coder --reasoning-effort high --permission-mode auto --strict-mcp-config --session-id abc -n sciame-a -w ${WORKTREE} -p`,
     ' 600 00:30 qwen -p fai una cosa --permission-mode default',
+    ` 610 00:20 qoder -m coder -n qoder-vivo -w ${WORKTREE} --reasoning-effort medium -p`,
+    ` 620 00:10 timeout 14400 /opt/qoder/bin/qodercli -n qodercli-vivo -w ${WORKTREE} --print`,
     ' 650 40:00 qwen',
+    ' 660 40:00 qoder',
     ` 700 05:00 /bin/bash -c cd ${WORKTREE} && timeout 1500 qwen -p "ciao" --permission-mode default`,
+    ` 710 05:00 /bin/bash -c qoder -p "ciao" -w ${WORKTREE}`,
     ` 800 00:05 codex exec -m gpt-6-astra -C ${WORKTREE} -o c.esito.md -`,
   ].join('\n')
   const trovati = parsePs(ps)
 
-  expect(trovati.map(p => `${p.pid}:${p.nome}:${p.esecutore ?? 'codex'}`)).toEqual(['500:sciame-a:qwen', '600:qwen-600:qwen', '800:c:codex'])
+  expect(trovati.map(p => `${p.pid}:${p.nome}:${p.esecutore ?? 'codex'}`)).toEqual([
+    '500:sciame-a:qwen', '600:qwen-600:qwen', '610:qoder-vivo:qwen', '620:qodercli-vivo:qwen', '800:c:codex',
+  ])
   expect(trovati[0]).toMatchObject({ modello: 'qwen3-coder', effort: 'high', cartella: WORKTREE, durataSec: 70 })
+  expect(trovati[2]).toMatchObject({ modello: 'coder', effort: 'medium', cartella: WORKTREE, durataSec: 20 })
 })
 
 test('qwen_avvia lancia qwen-esegui con il permesso giusto e scrive il prompt in ~/.claude/regia/qwen', async ($, on) => {

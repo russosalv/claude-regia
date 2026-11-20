@@ -259,10 +259,12 @@ function valoriOpzioni(argomenti: readonly string[], opzioni: ReadonlySet<string
   return valori
 }
 
-/** Un `qwen` lanciato da `qwen-esegui`. Nome dal `-n`, cartella dal `-w`. */
+/** Un `qwen`, `qoder` o `qodercli` lanciato da `qwen-esegui`. Nome dal `-n`, cartella dal `-w`. */
 function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
-  const argomenti = argomentiCli(token, 'qwen')
-  // Solo `qwen -p`: una sessione interattiva di qualcuno non e un lavoro.
+  const argomenti = ['qwen', 'qoder', 'qodercli']
+    .map(comando => argomentiCli(token, comando))
+    .find((a): a is readonly string[] => a !== undefined)
+  // Solo la modalita headless: una sessione interattiva di qualcuno non e un lavoro.
   if (argomenti === undefined || !argomenti.some(t => t === '-p' || t === '--print')) return undefined
   const valori = valoriOpzioni(argomenti, OPZIONI_QWEN)
   const cartella = valori.get('-w') ?? valori.get('--cwd')
