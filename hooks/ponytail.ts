@@ -1,6 +1,6 @@
 // Le dipendenze della mod: quando la mod e nuova o aggiornata, la prima sessione
 // interattiva installa Ponytail e, se le loro CLI ci sono, i plugin di Codex e
-// di Qwen per Claude Code, se mancano, una volta per versione. Dopo vivono di
+// di Qwen/Qoder per Claude Code, se mancano, una volta per versione. Dopo vivono di
 // vita sua: la mod non lo aggiorna e, se viene tolto, non lo rimette fino alla
 // versione successiva. Chi non li vuole ha `/regia ponytail|codex|qwen off`.
 // Questi comandi riguardano solo i plugin: gli esecutori Codex, Qwen e Copilot
@@ -29,7 +29,7 @@ const DIPENDENZE: readonly Dipendenza[] = [
   {
     // Non esiste un plugin ufficiale di Qwen per Claude Code: questo e quello della comunita.
     nome: 'qwen', chiave: 'pluginQwen', marketplace: 'josephyaduvanshi/qwen-companion', plugin: 'qwen@qwen-companion', cli: 'qwen',
-    fatto: 'Plugin Qwen (qwen-companion) installato: si carica dalla prossima sessione. /regia qwen off evita che la mod lo installi.',
+    fatto: 'Plugin Qwen/Qoder (qwen-companion) installato: si carica dalla prossima sessione. /regia qwen off evita che la mod lo installi.',
   },
 ]
 const ATTESA_MS = 120_000
@@ -62,7 +62,7 @@ async function installa($: EngineInterface, d: Dipendenza): Promise<void> {
   await esegui($, ['install', d.plugin])
 }
 
-/** Senza la sua CLI il plugin di Codex o di Qwen non serve. */
+/** Senza la sua CLI il plugin di Codex o di Qwen/Qoder non serve. */
 async function haCli($: EngineInterface, d: Dipendenza): Promise<boolean> {
   if (d.cli === undefined) return true
   if (d.nome === 'qwen') return (await trovaCliQwen($)) !== undefined
@@ -125,7 +125,7 @@ export async function comandoPonytail($: EngineInterface, a: ArgomentiPlugin): P
     if (stato === 'attivo') return `Plugin ${d.nome} attivo (${d.plugin}): vive di vita sua, la mod non lo aggiorna.${esecutore}`
     if (stato === 'spento') return `Plugin ${d.nome} installato ma disabilitato a mano: la mod non lo tocca.${altrimenti}${esecutore}`
     if (!(await leggiConfig($, home)).dati[d.chiave]) return `Il plugin ${d.nome} non c'e e la mod non lo installa.${altrimenti} /regia ${d.nome} on lo installa.${esecutore}`
-    if (!(await haCli($, d))) return `Il plugin ${d.nome} non si installa: la CLI ${d.cli} non c'e su questo PC.${esecutore}`
+    if (!(await haCli($, d))) return `Il plugin ${d.nome} non si installa: la CLI ${d.nome === 'qwen' ? 'qwen/qoder compatibile' : d.cli} non c'e su questo PC.${esecutore}`
     await installa($, d)
 
     return `${d.fatto}${esecutore}`

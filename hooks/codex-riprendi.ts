@@ -22,8 +22,8 @@ export const DESCRIZIONE_RIPRENDI = [
 export const NOME_TOOL_QWEN_RIPRENDI = 'qwen_riprendi'
 
 export const DESCRIZIONE_QWEN_RIPRENDI = [
-  'Riprende un lavoro Qwen gia finito (qwen --resume) mandandogli un nuovo messaggio: Qwen continua la stessa sessione, con il suo contesto.',
-  'Parte staccato come qwen_avvia, con lo stesso permesso del primo giro, e risponde subito. Rifiuta un lavoro ancora in corso.',
+  'Riprende un lavoro Qwen/Qoder gia finito mandandogli un nuovo messaggio: usa la stessa famiglia CLI che ha creato la sessione e continua col suo contesto.',
+  'Parte staccato come qwen_avvia, con lo stesso permesso del primo giro, e risponde subito. Rifiuta un lavoro ancora in corso o una famiglia CLI non piu compatibile.',
 ].join(' ')
 
 export const NOME_TOOL_COPILOT_RIPRENDI = 'copilot_riprendi'

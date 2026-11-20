@@ -43,25 +43,25 @@ const SQUADRA_LONG: Readonly<Record<Squadra, readonly string[]>> = {
   claude: [
     LAVORI_INDIPENDENTI,
     SCIAME_DA_TRE,
-    '- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen Code, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.',
+    '- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen/Qoder, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.',
   ],
   mista: [
     LAVORI_INDIPENDENTI,
     `${SCIAME_DA_TRE} Non indicare \`esecutore\`: la mod tiene lo sviluppo principale su Claude e da agli esecutori esterni accesi i compiti che gli si addicono (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni), entro la quota. Indicalo solo se la persona lo chiede.`,
-    '- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen Code, Copilot) sono rinforzi, non un sostituto.',
+    '- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen/Qoder, Copilot) sono rinforzi, non un sostituto.',
   ],
   esterni: [
     '- Lavori indipendenti legati a questa sessione (i suoi tool e server MCP, una skill, un tipo di agente, cio che si e detto qui): piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
     '- Due o piu compiti indipendenti e autosufficienti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo. Non indicare `esecutore`: per ogni compito lo sceglie la mod fra Claude e gli esecutori esterni accesi, come fa per modello e sforzo.',
-    '- Gli esecutori esterni (Codex, Qwen Code, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
+    '- Gli esecutori esterni (Codex, Qwen/Qoder, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
   ],
 }
 
 /** In medio la principale lavora lei: con squadra `claude` dello sciame e degli esterni non si dice nulla. */
 const SQUADRA_MEDIO: Readonly<Record<Squadra, readonly string[]>> = {
   claude: [],
-  mista: ['- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen Code, Copilot), entro la quota, e tiene gli altri su Claude.'],
-  esterni: ['- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).'],
+  mista: ['- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen/Qoder, Copilot), entro la quota, e tiene gli altri su Claude.'],
+  esterni: ['- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen/Qoder, Copilot).'],
 }
 
 const testoLong = (squadra: Squadra): string => [

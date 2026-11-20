@@ -39,9 +39,9 @@ export const DESCRIZIONE_AVVIA = [
 export const NOME_TOOL_QWEN_AVVIA = 'qwen_avvia'
 
 export const DESCRIZIONE_QWEN_AVVIA = [
-  'Lancia un lavoro Qwen Code (qwen -p) in background in una cartella, staccato dalla sessione: sopravvive se la sessione si chiude. Gemello di codex_avvia.',
+  'Lancia un lavoro Qwen/Qoder (il primo comando compatibile fra qwen e qoder) in background in una cartella, staccato dalla sessione: sopravvive se la sessione si chiude. Gemello di codex_avvia.',
   'Scrive prompt, log ed esito in ~/.claude/regia/qwen/<nome>/ e registra inizio e fine in ~/.claude/regia/qwen/esegui.log; il pane Regia lo mostra come i Codex.',
-  'Con scrive=true (predefinito) Qwen puo cambiare file e lanciare comandi (permesso auto); con scrive=false solo leggere (permesso default).',
+  'Con scrive=true (predefinito) Qwen/Qoder puo cambiare file e lanciare comandi (permesso auto); con scrive=false solo leggere (permesso default).',
   'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
   PER_CHI_LO_CHIEDE,
 ].join(' ')

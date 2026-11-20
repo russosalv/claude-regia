@@ -296,7 +296,7 @@ test('un esecutore spento in config: rifiutato dal suo tool e nello sciame se in
   expect(amb.complete).toEqual([])
 
   // Chi e acceso funziona come prima; ad haiku si offrono solo gli usabili e una risposta fuori lista non passa.
-  expect(testoDi(await chiama($, 'qwen_avvia', { nome: 'q', cartella: WORKTREE, prompt: 'p' }))).toContain('Lavoro Qwen "q" avviato')
+  expect(testoDi(await chiama($, 'qwen_avvia', { nome: 'q', cartella: WORKTREE, prompt: 'p' }))).toContain('Lavoro Qwen/Qoder "q" avviato')
   await chiama($, 'sciame_avvia', { obiettivo: 'prova', compiti: [{ nome: 'a', prompt: lungo('implementa a'), scrive: true }, { nome: 'b', prompt: lungo('leggi b') }] })
   expect(domande(amb)[0]).toContain('"<claude|qwen>"')
   expect(domande(amb)[0]).not.toContain('- codex:')

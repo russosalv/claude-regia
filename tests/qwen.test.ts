@@ -1,4 +1,4 @@
-// Qwen Code: riga di comando e permesso, processi `qwen` nel pane, qwen_avvia, riprendi e sciame con esecutore qwen.
+// Qwen/Qoder: riga di comando e permesso, processi `qwen` nel pane, qwen_avvia, riprendi e sciame con esecutore qwen.
 
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
@@ -113,7 +113,7 @@ test('qwen_avvia lancia qwen-esegui con il permesso giusto e scrive il prompt in
 
   const scrive = await chiama($, 'qwen_avvia', { nome: 'prova', cartella: WORKTREE, prompt: 'crea un file', modello: 'qwen3-coder' })
   const testo = String(scrive.result ?? scrive.text ?? scrive.deny)
-  expect(testo).toMatch(/Lavoro Qwen "prova" avviato in background \(pid 4242\)/)
+  expect(testo).toMatch(/Lavoro Qwen\/Qoder "prova" avviato in background \(pid 4242\)/)
   expect(testo).toMatch(/Modello qwen3-coder, sforzo deciso da Qwen/)
   expect(testo).toMatch(/Permesso auto/)
   const lancio = amb.lanci.find(l => l.argv[0] === 'bash')
@@ -159,7 +159,7 @@ test('qwen_riprendi riprende la sessione scritta dallo script, con lo stesso per
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
 
   const esito = await chiama($, 'qwen_riprendi', { nome: 'vecchio', messaggio: 'continua' })
-  expect(String(esito.result ?? esito.text ?? esito.deny)).toMatch(/Lavoro Qwen "vecchio" ripreso \(sessione 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed, pid 4242/)
+  expect(String(esito.result ?? esito.text ?? esito.deny)).toMatch(/Lavoro Qwen\/Qoder "vecchio" ripreso \(sessione 1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed, pid 4242/)
   const lancio = amb.lanci.find(l => l.argv[0] === 'bash')
   expect(lancio?.argv.slice(3)).toEqual([BIN_QWEN, 'vecchio', WORKTREE, `${CARTELLA}/vecchio`, '', '', `${CARTELLA}/esegui.log`, 'default'])
   expect(lancio?.env).toEqual({ CLAUDE_CODE_SESSION_ID: SESSIONE, REGIA_RIPRENDI: '1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed' })

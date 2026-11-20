@@ -10,7 +10,7 @@ export type Sforzo = (typeof SFORZI)[number]
 export type EsecutoreCli = 'codex' | 'qwen' | 'copilot'
 export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen', 'copilot']
 /** Come la mod chiama ogni CLI nei suoi messaggi. */
-export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen', copilot: 'Copilot' }
+export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen/Qoder', copilot: 'Copilot' }
 
 /** Il rifiuto di un esecutore tolto da `esecutori` in config: vale per i tool diretti e per lo sciame. */
 export const messaggioSpento = (esecutore: EsecutoreCli): string => `esecutore ${esecutore} spento in config: /regia executors ${esecutore} on`
@@ -47,15 +47,15 @@ export const SCHEMA_CODEX_AVVIA = {
   additionalProperties: false,
 } as const
 
-/** Qwen: stesso schema di Codex, piu `scrive` che sceglie il permesso (`sforzo` e `modello` valgono per `qwen`). */
+/** Qwen/Qoder: stesso schema di Codex, piu `scrive` che sceglie il permesso. */
 export const SCHEMA_QWEN_AVVIA = {
   ...SCHEMA_CODEX_AVVIA,
   properties: {
     ...SCHEMA_CODEX_AVVIA.properties,
-    cartella: { type: 'string', description: 'Cartella in cui Qwen lavora: percorso assoluto (o con ~) di una cartella esistente.' },
-    prompt: { type: 'string', description: 'Il compito per Qwen, completo.' },
-    sforzo: { type: 'string', enum: [...SFORZI], description: 'Sforzo di ragionamento (--reasoning-effort); se manca decide Qwen.' },
-    modello: { type: 'string', description: 'Modello Qwen (-m); se manca, quello predefinito di Qwen.' },
+    cartella: { type: 'string', description: 'Cartella in cui Qwen/Qoder lavora: percorso assoluto (o con ~) di una cartella esistente.' },
+    prompt: { type: 'string', description: 'Il compito per Qwen/Qoder, completo.' },
+    sforzo: { type: 'string', enum: [...SFORZI], description: 'Sforzo di ragionamento (--reasoning-effort); se manca decide la CLI selezionata.' },
+    modello: { type: 'string', description: 'Modello Qwen/Qoder (-m); se manca, quello predefinito della CLI selezionata.' },
     scrive: { type: 'boolean', description: 'true (predefinito) se il lavoro cambia file o lancia comandi: permesso "auto". false: solo lettura, permesso "default".' },
   },
 } as const

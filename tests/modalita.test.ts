@@ -55,7 +55,7 @@ test('squadra claude: in long sviluppa Claude e gli esterni si usano solo se la 
   expect(long.split('\n')).toContain(AGENT_PER_I_LAVORI_INDIPENDENTI)
   expect(long.split('\n')).toContain(SCIAME_DA_TRE)
   const squadra = riga('long', 'claude', 'La squadra di sviluppo e Claude')
-  expect(squadra).toBe('- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen Code, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.')
+  expect(squadra).toBe('- La squadra di sviluppo e Claude: i subagenti (Agent) e i compiti dello sciame. Gli esecutori esterni (Codex, Qwen/Qoder, Copilot) si usano solo quando la persona li nomina, con `esecutore` nello sciame o con `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia`, `mcp__regia__copilot_avvia`.')
   // Nulla dice alla principale di usare gli esterni da se, ne di lasciare l'esecutore alla mod.
   for (const pezzo of ['fanno parte della squadra', 'senza aspettare che la persona', 'Non indicare `esecutore`', 'lo sceglie la mod fra', 'sciame di un compito', 'quota']) expect(long).not.toContain(pezzo)
   expect(long.split('\n').filter(r => /Codex|Qwen|Copilot|codex_avvia/.test(r))).toEqual([squadra])
@@ -71,12 +71,12 @@ test('squadra mista (la predefinita): in long Agent per i lavori indipendenti, l
   expect(long.split('\n')).toContain(AGENT_PER_I_LAVORI_INDIPENDENTI)
   expect(long).not.toContain('legati a questa sessione')
   expect(riga('long', 'mista', '`mcp__regia__sciame_avvia`')).toBe(`${SCIAME_DA_TRE} Non indicare \`esecutore\`: la mod tiene lo sviluppo principale su Claude e da agli esecutori esterni accesi i compiti che gli si addicono (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni), entro la quota. Indicalo solo se la persona lo chiede.`)
-  expect(riga('long', 'mista', 'rinforzi')).toBe('- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen Code, Copilot) sono rinforzi, non un sostituto.')
+  expect(riga('long', 'mista', 'rinforzi')).toBe('- La squadra di sviluppo e Claude, come subagenti (Agent) e come compiti dello sciame; gli esecutori esterni (Codex, Qwen/Qoder, Copilot) sono rinforzi, non un sostituto.')
   for (const pezzo of ['fanno parte della squadra', 'senza aspettare che la persona', 'sciame di un compito', 'Due o piu compiti']) expect(long).not.toContain(pezzo)
   // La quota e nominata ma non il suo numero: la sezione non cambia quando cambia.
   expect(long).not.toMatch(/\d+%/)
 
-  expect(riga('medio', 'mista', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen Code, Copilot), entro la quota, e tiene gli altri su Claude.')
+  expect(riga('medio', 'mista', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti vanno a chiamate ad Agent; se li metti in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) non indicare `esecutore`: la mod da quelli adatti agli esecutori esterni accesi (Codex, Qwen/Qoder, Copilot), entro la quota, e tiene gli altri su Claude.')
 })
 
 test('squadra esterni: il testo della 0.15, long li usa senza che la persona lo chieda e non indica l\'esecutore, medio li puo usare', () => {
@@ -85,10 +85,10 @@ test('squadra esterni: il testo della 0.15, long li usa senza che la persona lo 
     '- Lavori indipendenti legati a questa sessione (i suoi tool e server MCP, una skill, un tipo di agente, cio che si e detto qui): piu chiamate ad Agent nello stesso messaggio, senza aspettare l\'una per l\'altra.',
     '- Due o piu compiti indipendenti e autosufficienti, o compiti con dipendenze: `mcp__regia__sciame_avvia` (schema con ToolSearch). Gestisce coda, parallelismo, ripresa di chi fallisce e dipendenze; ti scrive lui alla fine, non controllarlo. Non indicare `esecutore`: per ogni compito lo sceglie la mod fra Claude e gli esecutori esterni accesi, come fa per modello e sforzo.',
     // I tre esterni sono della squadra; i tool diretti solo se la persona nomina l'esecutore.
-    '- Gli esecutori esterni (Codex, Qwen Code, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
+    '- Gli esecutori esterni (Codex, Qwen/Qoder, Copilot) fanno parte della squadra: usali senza aspettare che la persona lo chieda. Anche un solo compito lungo e autosufficiente lancialo come sciame di un compito, cosi riceve il suo esecutore. `mcp__regia__codex_avvia`, `mcp__regia__qwen_avvia` e `mcp__regia__copilot_avvia` servono quando la persona nomina l\'esecutore.',
   ])
   expect(TESTI_ORCHESTRA.long.esterni).not.toContain('fuori dalla sessione')
-  expect(riga('medio', 'esterni', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen Code, Copilot).')
+  expect(riga('medio', 'esterni', '`mcp__regia__sciame_avvia`')).toBe('- I pezzi indipendenti e autosufficienti possono andare anche in uno sciame (`mcp__regia__sciame_avvia`, schema con ToolSearch) senza indicare `esecutore`: la mod li distribuisce fra Claude e gli esecutori esterni accesi (Codex, Qwen/Qoder, Copilot).')
 })
 
 test('la regola cambia solo nelle righe della squadra, e quick e la stessa con ogni squadra', () => {

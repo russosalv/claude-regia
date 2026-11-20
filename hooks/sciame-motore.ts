@@ -31,7 +31,7 @@ type Risposta = { result: string } | { deny: string }
 
 const SCHEMA_COMPITI = {
   type: 'array',
-  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: omettilo, lo decide la mod secondo la squadra impostata (/regia team), fra claude e, se la squadra lo prevede, gli esecutori esterni accesi (codex, qwen = Qwen Code, copilot = GitHub Copilot CLI); indicalo solo se la persona chiede un esecutore preciso. qwen e copilot con scrive=false leggono soltanto. tipo: tipo di agente Claude (il compito resta a Claude). scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
+  description: 'I compiti. nome: breve e unico. prompt: autosufficiente. esecutore: omettilo, lo decide la mod secondo la squadra impostata (/regia team), fra claude e, se la squadra lo prevede, gli esecutori esterni accesi (codex, qwen = Qwen/Qoder, copilot = GitHub Copilot CLI); indicalo solo se la persona chiede un esecutore preciso. qwen e copilot con scrive=false leggono soltanto. tipo: tipo di agente Claude (il compito resta a Claude). scrive: true se cambia file (avra un worktree suo). dopo: nomi dei compiti da cui dipende. Modello e sforzo li decide la mod sul compito.',
   items: {
     type: 'object',
     properties: {
@@ -50,7 +50,7 @@ const SCHEMA_COMPITI = {
 export const STRUMENTI_SCIAME = [
   {
     name: 'sciame_avvia',
-    description: 'Lancia uno sciame di agenti Claude, Codex, Qwen e Copilot su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. Ometti `esecutore`: lo decide la mod secondo la squadra impostata (/regia team); indicalo solo se la persona chiede un esecutore preciso. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
+    description: 'Lancia uno sciame di agenti Claude, Codex, Qwen/Qoder e Copilot su una lavagna di compiti con dipendenze: parte chi e pronto, entro il parallelo; chi fallisce riprova una volta un gradino sopra; gli agenti si parlano con la posta e possono aggiungere compiti. Ometti `esecutore`: lo decide la mod secondo la squadra impostata (/regia team); indicalo solo se la persona chiede un esecutore preciso. Risponde subito; alla fine sveglia la principale con il riepilogo: non controllarlo.',
     inputSchema: {
       type: 'object',
       properties: {

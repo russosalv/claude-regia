@@ -1,6 +1,6 @@
 # regia
 
-**Turn Claude Code into an orchestrator.** Regia ("direction", as in film directing) is a Claude Code mod that makes your main session coordinate instead of doing the work itself, gives every task the model and effort it actually needs, and lets you run real swarms of Claude, Codex, Qwen Code and GitHub Copilot CLI agents, all watched from a live pane beside the chat.
+**Turn Claude Code into an orchestrator.** Regia ("direction", as in film directing) is a Claude Code mod that makes your main session coordinate instead of doing the work itself, gives every task the model and effort it actually needs, and lets you run real swarms of Claude, Codex, Qwen/Qoder and GitHub Copilot CLI agents, all watched from a live pane beside the chat.
 
 It works on its own on any machine and any project, with no other plugin and nothing to add to your `CLAUDE.md`.
 
@@ -23,8 +23,8 @@ Regia addresses each one:
 | **Questions with their context** | Every decision that is yours arrives with where things stand, the options and a recommendation: in the pane, with keys to answer or dig deeper with an agent, and as a notification if you are away from the PC. |
 | **The plan as a task list** | Items with the description of the macro-activity, grouped by phase; the finished ones fold into a group you can open. |
 | **Per-task model and effort** | No fixed table per agent type. For each `Agent` call a quick Haiku check reads the actual task and picks the model and effort. A failed task retries one step higher. |
-| **Swarms** | `sciame_avvia` runs Claude, Codex, Qwen Code and GitHub Copilot CLI agents on a board with dependencies, a parallelism limit, an isolated git worktree for each task that writes, and mail between them. |
-| **A team you set** | Claude is the development team, as subagents and as swarm tasks. The external executors you have enabled and installed (Codex, Qwen Code, Copilot) are reinforcements: with the default policy the mod hands them the swarm tasks that suit them, up to a quota, and the main session does not have to name who does a task. `/regia team` sets the split. See [Team](#team) and [Executors](#executors). |
+| **Swarms** | `sciame_avvia` runs Claude, Codex, Qwen/Qoder and GitHub Copilot CLI agents on a board with dependencies, a parallelism limit, an isolated git worktree for each task that writes, and mail between them. |
+| **A team you set** | Claude is the development team, as subagents and as swarm tasks. The external executors you have enabled and installed (Codex, Qwen/Qoder, Copilot) are reinforcements: with the default policy the mod hands them the swarm tasks that suit them, up to a quota, and the main session does not have to name who does a task. `/regia team` sets the split. See [Team](#team) and [Executors](#executors). |
 | **Surveillance and wake** | Stuck agents are detected, and a session left alone overnight is woken up while the plan still has open items. |
 | **Compaction that keeps the work going** | When the main session's context passes a threshold (60%), the mod compacts it at the end of the turn, telling the summary what to keep and handing it the plan, the open questions and the swarms from its own stores. In long mode the main session then carries on by itself. See [Compaction](#compaction). |
 | **Token savings** | Delegates are told to write the minimum and report briefly (or Ponytail does, if present). The main session sleeps while a swarm runs, and the tools do not weigh on the prompt. |
@@ -44,13 +44,13 @@ The first interactive session after installing or updating Regia also installs, 
 
 - [Ponytail](https://github.com/DietrichGebert/ponytail), always;
 - the Codex plugin (official, from OpenAI: marketplace `openai/codex-plugin-cc`, plugin `codex@openai-codex`), only if the `codex` CLI is on the machine;
-- the Qwen Code plugin (there is no official Qwen plugin for Claude Code, so Regia uses the community one: marketplace `josephyaduvanshi/qwen-companion`, plugin `qwen@qwen-companion`), only if the `qwen` CLI is on the machine.
+- the Qwen companion plugin (there is no official plugin for Claude Code, so Regia uses the community one: marketplace `josephyaduvanshi/qwen-companion`, plugin `qwen@qwen-companion`), only if a compatible `qwen` or `qoder` CLI is on the machine.
 
 The same rules apply to all three: once per Regia version, loaded from the next session, never updated by Regia. After that each lives its own life: a plugin you disabled by hand is left alone, and one you removed is not put back until Regia's next version. If an installation fails, Regia retries in the next session. `/regia ponytail off`, `/regia codex off` and `/regia qwen off` opt out (config keys `ponytail`, `pluginCodex`, `pluginQwen`, all true by default); the matching `on` installs the plugin now; without a value they show the status.
 
 GitHub Copilot CLI has no Claude Code plugin and needs none: the Copilot executor only uses the `copilot` command on your `PATH`, and `/regia doctor` says whether it is there.
 
-Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen Code (`qwen`, tested with 1.0.0-preview.1) only for Qwen jobs, [GitHub Copilot CLI](https://github.com/github/copilot-cli) (`copilot`, already signed in; written against the documentation of 1.0.112, see [its section](#github-copilot-cli-copilot_avvia-and-copilot_riprendi)) only for Copilot jobs, `python3` only for the `posta` mail CLI. No other plugin is required.
+Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, a compatible Qwen/Qoder command (`qwen` or `qoder`; Qoder 1.1.93 tested) for the stable `qwen` executor, [GitHub Copilot CLI](https://github.com/github/copilot-cli) (`copilot`, already signed in; written against the documentation of 1.0.112, see [its section](#github-copilot-cli-copilot_avvia-and-copilot_riprendi)) only for Copilot jobs, `python3` only for the `posta` mail CLI. No other plugin is required.
 
 ## Commands
 
@@ -62,7 +62,7 @@ Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen
 | `/regia quick [goal]` | A single agent; the main session switches to `quickModello` (sonnet), and the previous model comes back when you leave |
 | `/regia away` / `/regia here` | You are away from the PC: questions and a stopped or finished plan reach you as notifications |
 | `/regia all` | The pane for the **whole machine** |
-| `/regia doctor` | What is active right now: mode, version, Ponytail, Codex, Qwen, Copilot, which executors are usable, config |
+| `/regia doctor` | What is active right now: mode, version, Ponytail, Codex, Qwen/Qoder, Copilot, which executors are usable, config |
 | `/regia team` | The team policy, the quota of the external executors and what they mean |
 | `/regia team claude\|mixed\|external` | Who develops: Claude only, Claude with the external executors as reinforcements (default), or the external executors for every self-contained swarm task (config key `squadra`) |
 | `/regia team <number>` | The quota for `mixed`: the largest share of the tasks the mod assigns in one swarm that may go to external executors, a whole percentage from 0 to 100 (config key `squadraQuota`, default 50) |
@@ -70,7 +70,7 @@ Optional: [Codex CLI](https://github.com/openai/codex) only for Codex jobs, Qwen
 | `/regia executors codex\|qwen\|copilot on\|off` | Enable or disable an executor (config key `esecutori`). A disabled one is never picked and is refused when named |
 | `/regia ponytail [on\|off]` | Whether Ponytail is active; `on` installs it now, `off` stops Regia installing it |
 | `/regia codex [on\|off]` | The Codex **plugin** for Claude Code; `on` installs it now, `off` stops Regia installing it. It does not enable or disable the Codex executor: that is `/regia executors codex on\|off` |
-| `/regia qwen [on\|off]` | The Qwen Code **plugin** for Claude Code; `on` installs it now, `off` stops Regia installing it. The Qwen executor is `/regia executors qwen on\|off` |
+| `/regia qwen [on\|off]` | The Qwen/Qoder **plugin** for Claude Code; `on` installs it now, `off` stops Regia installing it. The Qwen/Qoder executor is `/regia executors qwen on\|off` |
 | `/regia swarm` | The boards of this session's swarms |
 | `/regia wake [on\|off]` | Surveillance of stuck agents and wake of the main session while the plan is open |
 | `/regia compact` | Compaction: on or off, the threshold, how full the context is now, and when the mod last compacted in this session |
@@ -157,11 +157,11 @@ The effort each subagent really runs with is read from `turn.step`, as Vitals do
 
 For Codex: `codex_avvia` without `sforzo` asks Haiku for the same judgment; the model, if it is neither in the call nor in the config (`codexModello`), is decided by Codex's own configuration.
 
-For Copilot: the model is passed (`--model`) only if the call or the config (`copilotModello`) gives one, otherwise Copilot uses its own default; the effort is passed (`--effort`) only if the call gives `sforzo`, with no Haiku judgment. Qwen works the same way, without a config key for the model.
+For Copilot: the model is passed (`--model`) only if the call or the config (`copilotModello`) gives one, otherwise Copilot uses its own default; the effort is passed (`--effort`) only if the call gives `sforzo`, with no Haiku judgment. Qwen/Qoder works the same way, without a config key for the model.
 
 ## Team
 
-Claude is the development team, as subagents (the `Agent` tool) and as swarm tasks. The external executors (Codex, Qwen Code, Copilot) are reinforcements, and the team policy says how much of the work they get. Version 0.15 sent every self-contained swarm task to an external executor and told the main session to use them without being asked: that is now one of three policies, and not the default.
+Claude is the development team, as subagents (the `Agent` tool) and as swarm tasks. The external executors (Codex, Qwen/Qoder, Copilot) are reinforcements, and the team policy says how much of the work they get. Version 0.15 sent every self-contained swarm task to an external executor and told the main session to use them without being asked: that is now one of three policies, and not the default.
 
 | Policy | Who develops | When external executors are used |
 |---|---|---|
@@ -176,9 +176,9 @@ In every policy `esecutori` (`/regia executors`) still decides which external ex
 **How the mod assigns in `mixed`**, for the tasks of one `sciame_avvia` call that state no `esecutore`:
 
 1. **Constraints**, with no model call: a task with `tipo` stays with Claude; with no usable external executor everything stays with Claude; and if the quota leaves no place (a single task, quota 0, a swarm that has already used its places) everything stays with Claude and the board says `scelto dalla mod: quota esterni raggiunta`.
-2. **One Haiku call** for the remaining tasks. Haiku is told that Claude is the main development team and keeps the development that needs understanding of the project (features touching several modules, design, anything that depends on the conversation or on this session's tools, MCP servers, skills and agent types; when in doubt, Claude), and that the external executors receive only what suits them: Qwen, mechanical or bulk edits, reading and summarising a lot of code, documentation, tests (the cheapest); Codex, independent review, audit, debugging, a well-specified isolated implementation; Copilot, a second implementation or a second opinion from another model family, a well-specified isolated implementation. The prompt ends with the cap, `Al massimo K compiti su N agli esecutori esterni`, and asks for the same one line of JSON.
+2. **One Haiku call** for the remaining tasks. Haiku is told that Claude is the main development team and keeps the development that needs understanding of the project (features touching several modules, design, anything that depends on the conversation or on this session's tools, MCP servers, skills and agent types; when in doubt, Claude), and that the external executors receive only what suits them: Qwen/Qoder, mechanical or bulk edits, reading and summarising a lot of code, documentation, tests (the cheapest); Codex, independent review, audit, debugging, a well-specified isolated implementation; Copilot, a second implementation or a second opinion from another model family, a well-specified isolated implementation. The prompt ends with the cap, `Al massimo K compiti su N agli esecutori esterni`, and asks for the same one line of JSON.
 3. **Fallback**, for the tasks Haiku left undecided: only a task that *looks* suitable can go out. That is a read-only task (`scrive` false), or one whose prompt says so in its first 240 characters: an obvious keyword for documentation, tests, review or mechanical work, in Italian or English (`documenta…`, `docs`, `readme`, `changelog`, `test`, `coverage`, `review`, `rivedi`, `audit`, `rename`, `rinomina`, `replace`, `sostituisci`, `lint`, `typo`, `bulk`, `in blocco`, `translate`, `summarize`, `riassumi`, a `second implementation` or `second opinion`), with no development word next to it (`implement`, `develop`, `design`, `refactor`, `feature` and their Italian forms). The suitable ones are spread least loaded first, with the same order of preference as in `external`. Everything else stays with Claude (`ripiego: sviluppo, resta a Claude`), and so does a prompt under 200 characters (`ripiego: compito breve`).
-4. **The cap**, applied in code after Haiku's answer and after the fallback. When more tasks are headed out than there are places, the ones that stay external are, in order: the read-only ones, then the ones Haiku gave to Qwen (bulk work, documentation, tests), then the order of the call. The others go back to Claude and the board says why: `scelto dalla mod: quota esterni raggiunta` (`ripiego: quota esterni raggiunta` for a task of the fallback). The mod never fills the quota: where Haiku said Claude, it is Claude.
+4. **The cap**, applied in code after Haiku's answer and after the fallback. When more tasks are headed out than there are places, the ones that stay external are, in order: the read-only ones, then the ones Haiku gave to Qwen/Qoder (bulk work, documentation, tests), then the order of the call. The others go back to Claude and the board says why: `scelto dalla mod: quota esterni raggiunta` (`ripiego: quota esterni raggiunta` for a task of the fallback). The mod never fills the quota: where Haiku said Claude, it is Claude.
 
 `sciame_aggiungi` counts what the swarm already has: the cap is computed on all the tasks the mod has assigned in that swarm, old and new, whatever their state, and the places already taken by external executors are subtracted. Adding one task to a swarm whose quota is full asks nothing and gives it to Claude.
 
@@ -194,9 +194,9 @@ In every policy `esecutori` (`/regia executors`) still decides which external ex
 
 ## Executors
 
-A task can be done by four executors: **Claude** (a subagent of the session) and three external CLIs that run detached from it, **Codex** (`codex`), **Qwen Code** (`qwen`) and **GitHub Copilot CLI** (`copilot`). How much of the work the external ones get is the [team](#team) policy; this section says which of them can be used and how the mod picks one for a swarm task that does not state it.
+A task can be done by four executors: **Claude** (a subagent of the session) and three external executors that run detached from it, **Codex** (`codex`), **Qwen/Qoder** (stable executor value `qwen`, concrete command `qwen` or `qoder`) and **GitHub Copilot CLI** (`copilot`). How much of the work the external ones get is the [team](#team) policy; this section says which of them can be used and how the mod picks one for a swarm task that does not state it.
 
-**Which executors can be picked.** An external executor is *usable* when it is enabled in the config and its CLI answers on this machine (`<cli> --version`, or, for `codex` and `copilot`, a copy under `~/.nvm/versions/node/*/bin`, where their launch scripts also look). The answer of the three CLIs is remembered for five minutes, so a running swarm does not probe them at every tick. `/regia executors` and `/regia doctor` always look again and show, for each of the three, enabled or not and CLI found or not.
+**Which executors can be picked.** An external executor is *usable* when it is enabled in the config and its CLI answers on this machine (`<cli> --version`, or, for `codex` and `copilot`, a copy under `~/.nvm/versions/node/*/bin`, where their launch scripts also look). Qwen/Qoder is stricter: Regia tries `qwen`, then `qoder`, and accepts the first command whose `--help` exposes every option used by the launcher; an installed command with a different interface is not usable. The answer is remembered for five minutes, so a running swarm does not probe at every tick. `/regia executors` and `/regia doctor` always look again.
 
 - Config key `esecutori`: a list among `codex`, `qwen`, `copilot`; all three by default. Unknown names are dropped with a warning; an empty list means Claude only.
 - `/regia executors codex off` (and `on`, and the same for `qwen` and `copilot`) rewrites that list. This is not `/regia codex on|off`, which only decides whether Regia installs the Codex plugin for Claude Code.
@@ -205,7 +205,7 @@ A task can be done by four executors: **Claude** (a subagent of the session) and
 **How the mod chooses with the team `external`**, for the tasks of one `sciame_avvia` call that state no `esecutore` (a task added later with `sciame_aggiungi` is decided the same way, on its own). With `mixed` the steps are the same, but Haiku is told to keep the development on Claude, the fallback sends out only the tasks that look suitable and a cap applies: see [Team](#team). With `claude` there is nothing to choose.
 
 1. **Constraints**, with no model call: a task with `tipo` (a Claude agent type) stays with Claude; with no usable external executor everything stays with Claude.
-2. **One Haiku call per swarm**, for all the remaining tasks together. Haiku sees each task's name, whether it writes and the first 600 characters of its prompt, plus one line on what each usable executor is good for: Claude for work that needs this session's tools, MCP servers, skills or agent types, short lookups and anything tied to the conversation; Codex for autonomous implementation of a well-specified task, debugging, code review and audits; Qwen for mechanical or bulk edits, reading and summarising a lot of code, documentation and tests (the cheapest); Copilot for autonomous implementation and as a different model family for a second implementation or opinion. It is told to spread the work and to send self-contained tasks to an external executor, and it answers with one line of JSON, task name to executor. Only usable executors and only the tasks asked are accepted.
+2. **One Haiku call per swarm**, for all the remaining tasks together. Haiku sees each task's name, whether it writes and the first 600 characters of its prompt, plus one line on what each usable executor is good for: Claude for work that needs this session's tools, MCP servers, skills or agent types, short lookups and anything tied to the conversation; Codex for autonomous implementation of a well-specified task, debugging, code review and audits; Qwen/Qoder for mechanical or bulk edits, reading and summarising a lot of code, documentation and tests (the cheapest); Copilot for autonomous implementation and as a different model family for a second implementation or opinion. It is told to spread the work and to send self-contained tasks to an external executor, and it answers with one line of JSON, task name to executor. Only usable executors and only the tasks asked are accepted.
 3. **Fallback**, for the tasks Haiku left undecided (no answer, an unknown name): the ones whose prompt is at least 200 characters long are spread in rotation over the usable external executors, each time to the least loaded one, preferring `codex`, `copilot`, `qwen` for a task that writes and `qwen`, `codex`, `copilot` for a read-only one. Shorter prompts are not taken as self-contained and stay with Claude.
 
 The board says who chose, next to the executor: `indicato` (the call named it), `scelto dalla mod: …` (a constraint, the team policy, Haiku or the quota: `squadra claude`, `tipo di agente Claude`, `nessun esterno usabile`, `dal compito`, `quota esterni raggiunta`), `ripiego: …` (the fallback). `sciame_stato`, `/regia swarm` and the final summary print it; in the pane a waiting task shows `sciame <id> · indicato|mod|ripiego`.
@@ -216,7 +216,7 @@ The board says who chose, next to the executor: `indicato` (the call named it), 
 
 **A missing CLI.** The mod never picks an executor whose CLI it cannot find. If you name one anyway, nothing changes from before: the job starts, the script ends with exit 127, and in a swarm the task retries once and then fails. If the mod picked the executor and its CLI turns out to be missing at launch (exit 127), or the executor was disabled while the task was waiting, the task goes to Claude instead of failing twice, and the board says `ripiego: CLI <name> non trovata`.
 
-Swarm support is per executor, and all three external ones support it today: each has its own launch script, permission handling and log, described in the sections on [Codex](#starting-codex-the-codex_avvia-tool), [Qwen Code](#qwen-code-qwen_avvia-and-qwen_riprendi) and [Copilot](#github-copilot-cli-copilot_avvia-and-copilot_riprendi).
+Swarm support is per executor, and all three external ones support it today: each has its own launch script, permission handling and log, described in the sections on [Codex](#starting-codex-the-codex_avvia-tool), [Qwen/Qoder](#qwenqoder-qwen_avvia-and-qwen_riprendi) and [Copilot](#github-copilot-cli-copilot_avvia-and-copilot_riprendi).
 
 ## Swarms
 
@@ -251,7 +251,7 @@ Five of these tasks state no `esecutore`: the mod assigns them according to the 
 - **The main session spends nothing while it waits**: the swarm answers at once and wakes it with a single turn at the end, with the summary. Full reports are in `~/.claude/regia/sciami/<id>/<task>.md`.
 - `sciame_stato` and `/regia swarm` show the board; `sciame_ferma` cancels what is waiting, and what is running finishes its job. Waiting tasks show in the plan list in the pane.
 
-Limits: `turn.complete` does not say whether an ending is provisional; the signal is the agent's `waiting` state, which also holds for a plan to approve or an `Agent` call (that is why the task times out anyway). Merging the branches is left to a delegate of the main session; if the session closes, Claude subagents die with it (Codex, Qwen and Copilot jobs do not); a task that finishes while the mod reloads counts as completed, without its report.
+Limits: `turn.complete` does not say whether an ending is provisional; the signal is the agent's `waiting` state, which also holds for a plan to approve or an `Agent` call (that is why the task times out anyway). Merging the branches is left to a delegate of the main session; if the session closes, Claude subagents die with it (Codex, Qwen/Qoder and Copilot jobs do not); a task that finishes while the mod reloads counts as completed, without its report.
 
 ## Surveillance and wake
 
@@ -297,7 +297,7 @@ Limits, stated plainly:
 
 - **A short final report** at the end of every delegate: the main session rereads every report at every turn, and it is the cost that grows most.
 - **A sobriety rule** (write the minimum, reuse, no abstractions nobody asked for; never cut validation, security or tests of risky logic). If [Ponytail](https://github.com/DietrichGebert/ponytail) is active the mod does not repeat it: Ponytail already carries its own to subagents. There is no need to install it separately: when the mod is new or updated, the first interactive session installs it if it is missing (`claude plugin marketplace add` and `install`), once per version, and it loads from the next session. Then it lives its own life: the mod does not update it and, if you remove it, does not put it back until the next version. `/regia ponytail off` stops the mod installing it; one disabled by hand stays as it is; if the installation fails the mod uses its own rule and retries in the next session. The same goes for the Codex and Qwen plugins (see Install).
-  Codex, Qwen and Copilot jobs always receive the mod's rule.
+  Codex, Qwen/Qoder and Copilot jobs always receive the mod's rule.
 - **The minimum model and effort** that suffice for the task (see above).
 - **Deferred tools**: the schemas do not weigh on every request of every session. The model loads them with ToolSearch when needed.
 - **The swarm** does not keep the main session busy while it waits.
@@ -306,8 +306,8 @@ Limits, stated plainly:
 
 - The status line always concerns the session, for example `● 3 codex · 2 claude · 4 da fare`. The engine prefixes it with `⚠ regia:`: that prefix cannot be removed.
 - **Talk to a subagent**: `▸ apri` brings its conversation into the main view; `[ ← principale ]` or `/regia` go back. In a narrow pane the job's name becomes clickable (`▸`).
-- **A Codex, Qwen or Copilot log**: `▸ log` shows the last 30 lines, `[ ↻ ]` rereads them.
-- **Write**: `✉ scrivi` opens a field at the top of the pane; Enter sends as `utente`. `↻ riprendi` resumes a finished Codex, Qwen or Copilot job.
+- **A Codex, Qwen/Qoder or Copilot log**: `▸ log` shows the last 30 lines, `[ ↻ ]` rereads them.
+- **Write**: `✉ scrivi` opens a field at the top of the pane; Enter sends as `utente`. `↻ riprendi` resumes a finished Codex, Qwen/Qoder or Copilot job.
 - **Adaptive columns**: when space runs short they give way, in order: tokens, activity indicator, executor, keys, model and Dove/Esito. Lavoro and Durata stay. No row wraps.
 - Sources are reread every 15 seconds (configurable) and at every `/regia`; while something is running the pane redraws every second. A source that fails gives a warning line, the others carry on.
 
@@ -386,22 +386,23 @@ A single mailbox, `~/.claude/regia/posta/posta.jsonl`: one JSON line per message
 
 `codex exec resume <session id> [PROMPT]` exists (codex-cli 0.163), so there is the tool `codex_riprendi(nome, messaggio)` and, in FATTI, the `↻ riprendi` key on every Codex job with a log. The Codex session id is read from `<nome>.sessione` (which the script writes at the end of a round) or from the log header (`session id: …`), where folder, model and effort are too. The launch is that of `codex_avvia` (detached, `esegui.log`, attempts on "at capacity") with `REGIA_RIPRENDI` in the environment: the script enters the job's folder (`resume` has no `-C`) and sends the message from `<nome>.riprendi.md`. The previous round's log and outcome go at the end of `<nome>.storico.log`. It also works for jobs from the logs in `codexLogs`: the log is searched next to the configured ones. A job still running is refused: you write to it with `posta_invia`.
 
-## Qwen Code: `qwen_avvia` and `qwen_riprendi`
+## Qwen/Qoder: `qwen_avvia` and `qwen_riprendi`
 
-The same idea and the same code as Codex, with `qwen` in place of `codex exec`. `qwen_avvia(nome, cartella, prompt, regole?, sforzo?, modello?, scrive?)` writes prompt, log and outcome in `~/.claude/regia/qwen/<nome>/` and the `inizio`/`fine` lines in `~/.claude/regia/qwen/esegui.log` (always among the pane's sources, like Codex's). The `script/qwen-esegui` script runs, from the job's folder and with `nice`:
+The same idea and the same code as Codex. The public identity stays `qwen`: tools, config, rows and storage do not change. At launch Regia checks `qwen`, then `qoder`, and uses the first command with the option contract below. `qwen_avvia(nome, cartella, prompt, regole?, sforzo?, modello?, scrive?)` writes prompt, log and outcome in `~/.claude/regia/qwen/<nome>/` and the `inizio`/`fine` lines in `~/.claude/regia/qwen/esegui.log` (always among the pane's sources, like Codex's). The launcher runs from the job's folder with `nice`:
 
 ```
-timeout 14400 qwen [-m <model>] [--reasoning-effort <effort>] --permission-mode <auto|default> --strict-mcp-config --session-id <uuid> -n <nome> -w <folder> -p < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
+[timeout 14400] <qwen|qoder> [-m <model>] [--reasoning-effort <effort>] --permission-mode <auto|default> --strict-mcp-config --session-id <uuid> -n <nome> -w <folder> -p < <nome>.prompt.md > <nome>.esito.md 2> <nome>.log
 ```
 
-- **`--strict-mcp-config`**: always, also on resume. With a `.mcp.json` in the project, `qwen -p` loads its MCP servers and the provider always answers `provider_error`; this way it loads none. A `provider_error` in the outcome or the log counts as a failure (exit 1) even with exit 0.
-- **Prompt from stdin**: no argument limit and no prompt in `ps`. The stdout of `qwen -p` is the final answer: it is the outcome (`<nome>.esito.md`). An empty answer with exit 0 counts as a failure (exit 1).
-- **Permission**: `scrive` (default `true`) uses `--permission-mode auto`, `scrive: false` uses `default`. Tried on qwen 1.0.0-preview.1 with a task that creates a file, launches a shell, does `git commit` and `python3`: `accept_edits` writes files but refuses shell commands that are not read-only; `dont_ask` refuses everything; `auto` and `bypass_permissions` succeed, and `auto` is the less permissive. `default` reads and runs `ls`, but refuses writes. Whoever needs more (installing packages, commands that `auto` refuses) has no way out: the mod does not use `bypass_permissions`.
-- **Effort**: if you do not give it, Qwen decides (no Haiku judgment). **Model**: the one you give, otherwise Qwen's default (there is no `qwenModello` in config).
-- **A single attempt**: no repeats on "at capacity"; in a swarm the mod retries once, as for every task. A safety cap of 4 hours (`REGIA_QWEN_TIMEOUT`, seconds); the surveillance stops one that is silent for `stalloMinuti`, watching the log and the session file `~/.qwen/projects/<folder>/<id>.jsonl`.
-- **The pane** shows Qwen jobs like Codex ones (a `qwen` row, `▸ log`, `✉ scrivi`, `↻ riprendi`, count `● 1 qwen`): the live ones are the `qwen -p` processes (name from `-n`, folder from `-w`, model from `-m`), the finished ones come from `esegui.log`. An interactive `qwen` session does not count.
-- **`qwen_riprendi(nome, messaggio)`** (and the `↻ riprendi` key) uses `qwen --resume <id>`: the id is chosen by the script (`--session-id`) and written to `<nome>.sessione`, with folder and permission in `<nome>.cartella` and `<nome>.permesso`. Tried: the session remembers the previous round.
-- **In a swarm**: the mod can pick Qwen for a task that states no executor (team `mixed` or `external`); `esecutore: "qwen"` forces it. `scrive: true` has its own worktree and the `auto` permission; `scrive: false` works read-only on the repository (`default`). The `posta` CLI requires a shell command: read-only, Qwen cannot use it.
+- **Compatibility**: presence is not enough. The selected command must expose `--permission-mode`, `--strict-mcp-config`, `--session-id`, `--name`, `--cwd`, `--print`, `--resume`, `--model` and `--reasoning-effort`. A compatible `qwen` wins; otherwise Regia tries `qoder`.
+- **`--strict-mcp-config`**: always, also on resume. It prevents project MCP servers from breaking an unattended run. A `provider_error` in the outcome or log counts as a failure even when the CLI exits 0.
+- **Prompt from stdin**: no argument limit and no prompt in `ps`. Stdout is the final answer (`<nome>.esito.md`); an empty answer with exit 0 counts as a failure.
+- **Permission**: `scrive` (default `true`) uses `--permission-mode auto`, `scrive: false` uses `default`. Qoder 1.1.93 was tested with file edits, shell, `git commit` and `python3`; `auto` is the least permissive mode that completes that workflow, while `default` remains read-only.
+- **Effort and model**: if absent, the selected CLI decides; there is no `qwenModello` config key.
+- **A single attempt**: no repeats on "at capacity"; in a swarm the mod retries once, as for every task. `REGIA_QWEN_TIMEOUT` applies where the system provides `timeout`; stall surveillance remains active everywhere and follows the session under `~/.qwen/projects` or `~/.qoder/projects`.
+- **The pane** keeps the stable `qwen` row/count. Live `qwen`, `qoder` and `qodercli` headless processes are recognised; interactive sessions are ignored.
+- **`qwen_riprendi(nome, messaggio)`** reuses the same family that created the session. New jobs store it in `<nome>.cli`; legacy jobs infer it from the session root when unambiguous.
+- **In a swarm**: the mod can pick Qwen/Qoder for a task that states no executor; `esecutore: "qwen"` forces it. `scrive: true` has its own worktree and the `auto` permission; `scrive: false` works read-only on the repository (`default`).
 
 ## GitHub Copilot CLI: `copilot_avvia` and `copilot_riprendi`
 
@@ -446,7 +447,7 @@ For each row: job name, executor (`claude`, `codex`, `qwen` or `copilot`), model
 ## Sources
 
 1. **Claude subagents** of the session, from `$.agent.list()`. In progress only `running`, `pending` and `waiting` (and `idle` for a teammate, who waits for messages); `completed` and an `idle` subagent go in FATTI as completed, `failed` and `killed` as failed and stopped.
-2. **Running Codex**: `ps -ww -eo pid,etime,args`, `codex exec` lines. It extracts `-m` (model), `-c model_reasoning_effort=...`, `-C` (folder) and `-o` (the job's name is the basename without `.esito.md`). Processes duplicated by the npm launcher (same `-o`) count once. Qwen `qwen -p` processes are read the same way, and so are the `copilot` processes started by `copilot_avvia`.
+2. **Running external CLIs**: `ps -ww -eo pid,etime,args`; Codex uses `codex exec`, Qwen/Qoder uses headless `qwen`, `qoder` or `qodercli`, and Copilot uses the processes started by `copilot_avvia`. Interactive sessions and shell commands that merely mention a CLI are ignored.
 3. **Codex history**: `~/.claude/regia/codex/esegui.log`, written by `codex_avvia`, plus the logs in `codexLogs` if you have others, with lines like:
    ```
    14:14 inizio job-alpha
@@ -518,7 +519,7 @@ If a source fails the pane shows a yellow warning line and the others carry on.
 - In a narrow pane the keys column gives way and only the job's name stays clickable (the main key): `✉ scrivi` and `↻ riprendi` need a pane wide enough.
 - The executor choice sees only the first 600 characters of each task's prompt, and Haiku gives no reason of its own: the board says `scelto dalla mod: dal compito`. In the pane, who chose is shown only on waiting tasks.
 - With the team `mixed`, when Haiku does not answer the mod tells a suitable task from development with a short list of keywords at the start of the prompt: a task described in other words stays with Claude. The quota counts tasks, not their size.
-- `qwen-esegui` does not look for `qwen` under nvm, so neither does the detection: a `qwen` outside the `PATH` of the session counts as missing.
+- `qwen-esegui` checks `qwen` and `qoder` only on the session's `PATH`; unlike Codex and Copilot, it does not search nvm directories.
 - A wrapper that is not `codex exec` directly (for example `bash -c "codex exec ..."`) is not recognized.
 
 ## Development
