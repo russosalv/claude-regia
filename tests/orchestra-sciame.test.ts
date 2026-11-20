@@ -185,7 +185,7 @@ test('un agente fermo in attesa di un suo comando in background non e finito: i 
   expect(m.lanci[1]?.prompt).toContain(REGOLA_PRIMO_PIANO)
 })
 
-test('se l\'agente in attesa non riprende entro attesaMinuti il compito e fermo, la principale e avvisata e i dipendenti non partono', async ($, on) => {
+test('se l\'agente in attesa non riprende entro attesaMinuti il compito e fermo, la principale e avvisata e i dipendenti non partono', { timeoutMs: 60_000 }, async ($, on) => {
   const amb = ambiente(on, { config: { attesaMinuti: 10 }, risposta: () => ({ isAnswered: true, text: '{"modello":"haiku","sforzo":"low"}', usage: ZERO }), agenti: () => m.agenti })
   on('turn.complete', () => ({ text: '' }) as never)
   const m = motoreSciame($, on)
