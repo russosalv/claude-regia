@@ -1,42 +1,88 @@
 #!/usr/bin/env bash
-# Lancia un lavoro Qwen Code per la mod regia (tool qwen_avvia): nice, un solo tentativo, righe di inizio e fine in
-# esegui.log. Il prompt entra da stdin (<nome>.prompt.md): niente limite di argv e niente prompt in `ps`.
-# Con REGIA_RIPRENDI=<id sessione qwen> riprende quella sessione con il messaggio di <nome>.riprendi.md (qwen_riprendi).
-# --strict-mcp-config: niente server MCP del progetto (.mcp.json), con cui il provider risponde provider_error.
-# Permesso: `auto` scrive file e lancia comandi (provato: accept_edits rifiuta git e python); `default` legge soltanto.
-# Uso: qwen-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo|""> <esegui.log> <permesso> [ramo-base]
+# Lancia un lavoro Qwen/Qoder per la mod Regia. L'esecutore resta `qwen`, ma
+# il comando concreto e il primo compatibile fra qwen e qoder. La famiglia
+# scelta viene registrata perche una ripresa deve usare lo stesso archivio di
+# sessione (~/.qwen oppure ~/.qoder).
 set -u
 n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; P=${7:-auto}; B=${8:-main}
 R=${REGIA_RIPRENDI:-}
-# Tetto di sicurezza (secondi) se la mod non gira: la sorveglianza ferma comunque chi tace da stalloMinuti.
 T=${REGIA_QWEN_TIMEOUT:-14400}
 cd "$D" || exit 1
-modello=(); [ -n "$M" ] && modello=(-m "$M")
-sforzo=(); [ -n "$S" ] && sforzo=(--reasoning-effort "$S")
 export REGIA_NOME="$n"
 echo $$ > "$n.pid"
 echo "$P" > "$n.permesso"
 echo "$W" > "$n.cartella"
+echo "$(date +%H:%M) inizio $n" >> "$L"
+
+finisci() { # <exit code>
+  local rc=$1 commit
+  commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
+  echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
+  rm -f "$n.pid"
+  exit "$rc"
+}
+
+compatibile() { # <qwen|qoder>
+  local comando=$1 help opzione
+  command -v "$comando" >/dev/null 2>&1 || return 1
+  help=$("$comando" --help 2>&1) || return 1
+  for opzione in --permission-mode --strict-mcp-config --session-id --name --cwd --print --resume --model --reasoning-effort; do
+    case "$help" in *"$opzione"*) ;; *) return 1 ;; esac
+  done
+}
+
+scegli() {
+  compatibile qwen && { echo qwen; return 0; }
+  compatibile qoder && { echo qoder; return 0; }
+  return 1
+}
+
+famiglia_legacy() { # <id sessione>
+  local id=$1 trovato_qwen='' trovato_qoder=''
+  [ -d "$HOME/.qwen/projects" ] && trovato_qwen=$(find "$HOME/.qwen/projects" -name "$id.jsonl" -print -quit 2>/dev/null)
+  [ -d "$HOME/.qoder/projects" ] && trovato_qoder=$(find "$HOME/.qoder/projects" -name "$id.jsonl" -print -quit 2>/dev/null)
+  if [ -n "$trovato_qwen" ] && [ -n "$trovato_qoder" ]; then return 2; fi
+  if [ -n "$trovato_qwen" ]; then echo qwen; return 0; fi
+  if [ -n "$trovato_qoder" ]; then echo qoder; return 0; fi
+  scegli
+}
+
+CLI=''
 if [ -n "$R" ]; then
-  # Il giro di prima resta in <nome>.storico.log; l'esito vuoto dice se questo giro ha risposto.
+  if [ -f "$n.cli" ]; then
+    CLI=$(tr -d '[:space:]' < "$n.cli")
+    case "$CLI" in qwen|qoder) ;; *) echo "regia: famiglia Qwen/Qoder non valida in $n.cli" >&2; finisci 127 ;; esac
+  else
+    CLI=$(famiglia_legacy "$R")
+    stato=$?
+    if [ "$stato" -eq 2 ]; then
+      echo "regia: sessione $R presente sia in ~/.qwen sia in ~/.qoder; ripresa ambigua" >&2
+      finisci 127
+    fi
+    [ "$stato" -eq 0 ] || { echo 'regia: nessuna CLI Qwen/Qoder compatibile' >&2; finisci 127; }
+  fi
+  compatibile "$CLI" || { echo "regia: la CLI registrata $CLI non e disponibile o compatibile" >&2; finisci 127; }
   [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
   [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
   rm -f "$n.esito.md"
   sessione=(--resume "$R"); entrata="$n.riprendi.md"
 else
-  # L'id lo scegliamo noi: serve subito a qwen_riprendi e alla sorveglianza.
+  CLI=$(scegli) || { echo 'regia: nessuna CLI Qwen/Qoder compatibile' >&2; finisci 127; }
   id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
   echo "$id" > "$n.sessione"
   sessione=(--session-id "$id"); entrata="$n.prompt.md"
 fi
-echo "$(date +%H:%M) inizio $n" >> "$L"
-# -n e -w servono anche a `ps`: la mod riconosce il lavoro dal nome.
-( cd "$W" && nice -n 10 timeout "$T" qwen "${modello[@]}" "${sforzo[@]}" --permission-mode "$P" --strict-mcp-config "${sessione[@]}" -n "$n" -w "$W" -p < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
+echo "$CLI" > "$n.cli"
+
+argomenti=()
+[ -n "$M" ] && argomenti+=(-m "$M")
+[ -n "$S" ] && argomenti+=(--reasoning-effort "$S")
+argomenti+=(--permission-mode "$P" --strict-mcp-config "${sessione[@]}" -n "$n" -w "$W" -p)
+comando=(nice -n 10)
+command -v timeout >/dev/null 2>&1 && comando+=(timeout "$T")
+comando+=("$CLI" "${argomenti[@]}")
+( cd "$W" && "${comando[@]}" < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
 rc=$?
-# Una risposta vuota con exit 0 e un guasto (API, rete): meglio che lo sciame lo rilanci.
 [ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
-# provider_error: qwen lo scrive nell'esito (stdout) e puo uscire 0; con i server MCP del progetto e il guasto di sempre.
 [ "$rc" -eq 0 ] && grep -qs 'provider_error' "$D/$n.esito.md" "$D/$n.log" && rc=1
-commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
-echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
-rm -f "$n.pid"
+finisci "$rc"
