@@ -53,7 +53,7 @@ test('usabile e chi e acceso in config e ha la CLI: il doctor e /regia executors
   const testo = testoEsecutori(stati)
   expect(testo).toContain('Esecutori esterni usabili ora: codex.')
   expect(testo).toContain('  codex: acceso · CLI trovata (codex-cli 1.2)')
-  expect(testo).toContain('  qwen: spento in config · CLI trovata (qwen 0.9)')
+  expect(testo).toContain('  qwen (Qwen/Qoder): spento in config · CLI trovata (qwen 0.9)')
   expect(testo).toContain('  copilot: acceso · CLI non trovata')
   expect(testo).toContain('/regia executors codex|qwen|copilot on|off')
   expect(testoEsecutori(statoEsecutori([], {}))).toContain('usabili ora: nessuno, negli sciami lavora solo Claude.')
@@ -63,6 +63,7 @@ test('usabile e chi e acceso in config e ha la CLI: il doctor e /regia executors
     avvisi: [], haSuperficie: true, haAgent: true, isPonytail: false, sciamiAttivi: 0, repo: '/r', codex: 'codex-cli 1', copilot: 'Copilot 1',
   }
   expect(testoDoctor(dati)).toContain('Esecutori: usabili codex; qwen no (CLI non trovata), copilot no (spento in config) — /regia executors.')
+  expect(testoDoctor({ ...dati, qwen: 'qoder 1.1.93' })).toContain('Qwen/Qoder: qoder 1.1.93.')
 })
 
 test('gli argomenti di /regia executors: mostra, accende o spegne uno dei tre; il resto e sbagliato o non e questo comando', () => {
@@ -341,20 +342,20 @@ test('/regia executors mostra chi e acceso e chi ha la CLI, e accende o spegne r
   expect(String((await comando($, 'ponytail off')).text)).not.toContain('/regia executors')
 })
 
-test('codex e copilot fuori dal PATH si cercano nell\'ultimo nvm, come fanno i loro script; qwen no', async ($, on) => {
+test('codex e copilot fuori dal PATH si cercano nell\'ultimo nvm, qwen e qoder no', async ($, on) => {
   const nvm = `${HOME}/.nvm/versions/node`
-  ambiente(on, { cliAssenti: [...TUTTI], esistenti: [`${nvm}/v9.11.0/bin/codex`, `${nvm}/v22.3.0/bin/codex`, `${nvm}/v22.3.0/bin/qwen`] })
+  ambiente(on, { cliAssenti: [...TUTTI, 'qoder'], esistenti: [`${nvm}/v9.11.0/bin/codex`, `${nvm}/v22.3.0/bin/codex`, `${nvm}/v22.3.0/bin/qwen`] })
   on('fs.list', (_, e) => ({ value: (e.path === nvm ? ['v9.11.0', 'v22.3.0', 'v20.1.0'] : []).map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })) }))
 
   const testo = String((await comando($, 'executors')).text)
   expect(testo).toContain('Esecutori esterni usabili ora: codex.')
   expect(testo).toContain('  codex: acceso · CLI trovata (in ~/.nvm/versions/node/v22.3.0/bin, fuori dal PATH)')
-  expect(testo).toContain('  qwen: acceso · CLI non trovata')
+  expect(testo).toContain('  qwen (Qwen/Qoder): acceso · CLI non trovata')
   expect(testo).toContain('  copilot: acceso · CLI non trovata')
 })
 
 test('senza le CLI non si chiede nulla ad haiku e tutto resta a Claude; un esecutore indicato parte lo stesso, come prima', async ($, on) => {
-  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, cliAssenti: [...TUTTI], risposta: haiku(() => amb, '{"a":"codex"}') })
+  const amb: Ambiente = ambiente(on, { agenti: () => m.agenti, cliAssenti: [...TUTTI, 'qoder'], risposta: haiku(() => amb, '{"a":"codex"}') })
   const m = motore($, on)
   await $.session.start({ cwd: PROGETTO, surface: 'terminal', isInteractive: true })
 
@@ -366,7 +367,7 @@ test('senza le CLI non si chiede nulla ad haiku e tutto resta a Claude; un esecu
   expect(esterni(amb)).toEqual(['copilot:b'])
   // Le tre CLI si interrogano una volta, non a ogni giro dello sciame.
   await amb.clock?.advance(30_000)
-  expect(amb.lanci.filter(l => l.argv[1] === '--version').map(l => l.argv[0])).toEqual([...TUTTI])
+  expect(amb.lanci.filter(l => l.argv[1] === '--version').map(l => l.argv[0]).sort()).toEqual(['codex', 'copilot', 'qoder', 'qwen'])
 })
 
 test('la CLI di un esterno scelto dalla mod manca al lancio (exit 127): il compito passa a Claude invece di fallire due volte', async ($, on) => {

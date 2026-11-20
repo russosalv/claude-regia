@@ -336,8 +336,8 @@ const INSTALLA = [
   'plugin marketplace add josephyaduvanshi/qwen-companion', 'plugin install qwen@qwen-companion',
 ]
 
-function conImpostazioni(on: On, attivi: Record<string, boolean>, config?: unknown) {
-  const amb = ambiente(on, { config })
+function conImpostazioni(on: On, attivi: Record<string, boolean>, config?: unknown, cliAssenti: readonly string[] = []) {
+  const amb = ambiente(on, { config, cliAssenti })
   on('settings.read', () => ({ value: { enabledPlugins: attivi } }) as never)
 
   return { amb, lanci: () => amb.lanci.filter(l => l.argv[0] === 'claude').map(l => l.argv.slice(1).join(' ')) }
@@ -368,6 +368,13 @@ test('stessa versione: non lo rimette anche se e stato tolto', async ($, on) => 
 test('mod aggiornata: controlla di nuovo e lo installa se manca', async ($, on) => {
   const { amb, lanci } = conImpostazioni(on, {})
   amb.store.set(CHIAVE_DIPENDENZE, '0.0.1')
+  await avvio($, amb)
+
+  expect(lanci()).toEqual(INSTALLA)
+})
+
+test('il plugin Qwen si installa anche quando la CLI compatibile si chiama qoder', async ($, on) => {
+  const { amb, lanci } = conImpostazioni(on, {}, undefined, ['qwen'])
   await avvio($, amb)
 
   expect(lanci()).toEqual(INSTALLA)

@@ -75,7 +75,7 @@ export function testoDoctor(d: DatiDoctor): string {
     rigaDoctorCompatta(c, d.contesto),
     `Sciami: ${d.sciamiAttivi} in corso, parallelo ${c.sciameParallelo}. ${d.repo === undefined ? 'Nessun repository: i compiti che scrivono verranno rifiutati.' : `Repository: ${d.repo}.`}`,
     `Codex: ${d.codex === undefined ? 'NON trovato — codex_avvia e i compiti Codex non partiranno' : `${d.codex}, modello ${c.codexModello ?? 'deciso da Codex'}`}.`,
-    `Qwen: ${d.qwen === undefined ? 'NON trovato — qwen_avvia e i compiti Qwen non partiranno' : d.qwen}.`,
+    `Qwen/Qoder: ${d.qwen === undefined ? 'NON trovati o non compatibili — qwen_avvia e i compiti Qwen/Qoder non partiranno' : d.qwen}.`,
     `Copilot: ${d.copilot === undefined ? 'NON trovato — copilot_avvia e i compiti Copilot non partiranno' : `${d.copilot}, modello ${c.copilotModello ?? 'deciso da Copilot'}`}.`,
     rigaEsecutori(statoEsecutori(c.esecutori, d)),
     `Posta dai Codex: ${d.python === undefined ? 'python3 NON trovato — la CLI posta non funziona' : d.python}.`,

@@ -12,6 +12,7 @@ import { scriviChiave } from './comando-opzioni'
 import { versioneMod } from './doctor'
 import { leggiConfig, leggiHome } from './fonti'
 import { messaggioErrore } from './parsers'
+import { trovaCliQwen } from './qwen-cli'
 
 /** Un plugin che la mod installa se manca. `cli`: solo se quel comando c'e sul PC. */
 type Dipendenza = { nome: 'ponytail' | 'codex' | 'qwen'; chiave: 'ponytail' | 'pluginCodex' | 'pluginQwen'; marketplace: string; plugin: string; cli?: string; fatto: string }
@@ -64,6 +65,7 @@ async function installa($: EngineInterface, d: Dipendenza): Promise<void> {
 /** Senza la sua CLI il plugin di Codex o di Qwen non serve. */
 async function haCli($: EngineInterface, d: Dipendenza): Promise<boolean> {
   if (d.cli === undefined) return true
+  if (d.nome === 'qwen') return (await trovaCliQwen($)) !== undefined
 
   return $.process.run([d.cli, '--version'], { timeoutMs: 5_000 }).then(r => r.exitCode === 0, () => false)
 }

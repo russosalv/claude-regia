@@ -11,6 +11,7 @@ export const PROGETTO = `${HOME}/DEV/progetto`
 export const WORKTREE = `${PROGETTO}/.worktrees/lavoro`
 export const REGOLE = `${PROGETTO}/.regia/regole.md`
 export const BIN = `${HOME}/.claude/regia/bin/codex-esegui`
+const HELP_QWEN_COMPATIBILE = '--permission-mode\n--strict-mcp-config\n--session-id\n--name\n--cwd\n--print\n--resume\n--model\n--reasoning-effort'
 
 export type Chiamata = { argv: readonly string[]; env?: Record<string, string> }
 export type Ambiente = {
@@ -95,6 +96,8 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
     }
     const stdout = e.argv[0] === 'ps' ? PS
       : e.argv[0] === 'bash' ? '4242\n'
+        : (e.argv[0] === 'qwen' || e.argv[0] === 'qoder') && e.argv[1] === '--help' ? HELP_QWEN_COMPATIBILE
+          : (e.argv[0] === 'qwen' || e.argv[0] === 'qoder') && e.argv[1] === '--version' ? `${e.argv[0]} 1.0.0`
         : e.argv[0] === 'tail' ? (file.get(e.argv[e.argv.length - 1] ?? '') ?? '')
           : e.argv[0] === 'python3' ? cliPosta(stato, e.argv, e.init?.stdin) : ''
 

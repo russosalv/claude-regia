@@ -2,17 +2,67 @@
 
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
+import type { EngineInterface } from 'claude-code'
 
 import { SCHEMA_QWEN_AVVIA, permessoQwen, percorsiLavoro, validaRichiesta } from '../hooks/codex'
 import { costruisciSnapshot, testoStato } from '../hooks/model'
 import { esecutoreDelLog, parseEseguiLog, parsePs } from '../hooks/parsers'
 import { LOG_QWEN_REGIA } from '../hooks/registro'
+import { isHelpQwenCompatibile, trovaCliQwen } from '../hooks/qwen-cli'
 import type { Sciame } from '../hooks/sciame'
 import { HOME, SESSIONE, baseInput } from './fixture'
 import { PROGETTO, WORKTREE, ZERO, ambiente } from './ambiente'
 
 const BIN_QWEN = `${HOME}/.claude/regia/bin/qwen-esegui`
 const CARTELLA = `${HOME}/.claude/regia/qwen`
+
+const HELP_COMPATIBILE = [
+  '--permission-mode', '--strict-mcp-config', '--session-id', '--name', '--cwd',
+  '--print', '--resume', '--model', '--reasoning-effort',
+].join('\n')
+
+test('il resolver accetta soltanto una CLI con tutto il contratto usato dal launcher', () => {
+  expect(isHelpQwenCompatibile(HELP_COMPATIBILE)).toBe(true)
+  expect(isHelpQwenCompatibile(HELP_COMPATIBILE.replace('--strict-mcp-config', '--mcp-config'))).toBe(false)
+})
+
+type RispostaProcesso = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean; isStderrTruncated: boolean }
+const engineProcesso = (run: (argv: readonly string[]) => RispostaProcesso): EngineInterface => ({
+  process: { run: async (argv: readonly string[]) => run(argv) },
+} as unknown as EngineInterface)
+
+test('il resolver preferisce qwen compatibile e non interroga qoder', async () => {
+  const chiamate: string[] = []
+  const engine = engineProcesso(argv => {
+    chiamate.push(argv.join(' '))
+    const stdout = argv[1] === '--help' ? HELP_COMPATIBILE : 'qwen 1.0.0'
+
+    return { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+  })
+
+  expect(await trovaCliQwen(engine)).toEqual({ comando: 'qwen', versione: 'qwen 1.0.0' })
+  expect(chiamate).toEqual(['qwen --help', 'qwen --version'])
+})
+
+test('il resolver usa qoder se qwen manca o non e compatibile', async () => {
+  const engine = engineProcesso(argv => {
+    const [comando, opzione] = argv
+    const isQoder = comando === 'qoder'
+    const stdout = opzione === '--help' ? (isQoder ? HELP_COMPATIBILE : '--model\n--resume') : '1.1.93'
+
+    return { exitCode: isQoder ? 0 : 127, stdout, stderr: isQoder ? '' : 'command not found', isStdoutTruncated: false, isStderrTruncated: false }
+  })
+
+  expect(await trovaCliQwen(engine)).toEqual({ comando: 'qoder', versione: 'qoder 1.1.93' })
+})
+
+test('il resolver non dichiara usabile una famiglia senza alcuna CLI compatibile', async () => {
+  const engine = engineProcesso(() => ({
+    exitCode: 0, stdout: '--model\n--resume', stderr: '', isStdoutTruncated: false, isStderrTruncated: false,
+  }))
+
+  expect(await trovaCliQwen(engine)).toBeUndefined()
+})
 
 const chiama = ($: Engine, tool: string, argomenti: Record<string, unknown>) =>
   $.tool.call({ tool: `mcp__regia__${tool}`, ...argomenti } as never) as Promise<{ result?: string; deny?: string; text?: string }>

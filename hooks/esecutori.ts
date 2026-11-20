@@ -11,6 +11,7 @@ import { assegnaEsecutori, daChiedere, postiEsterni, promptEsecutori } from './i
 import type { CompitoDaAssegnare, GiaAssegnati, RegolaSquadra, SceltaEsecutore } from './instradamento'
 import { chiediHaiku } from './modelli'
 import { messaggioErrore } from './parsers'
+import { trovaCliQwen } from './qwen-cli'
 import { NOME_SQUADRA } from './registro'
 import type { ConfigRegia, Squadra } from './registro'
 
@@ -49,7 +50,7 @@ export function testoEsecutori(stati: readonly StatoEsecutore[]): string {
 
   return [
     `Esecutori esterni usabili ora: ${usabili.length === 0 ? 'nessuno, negli sciami lavora solo Claude' : usabili.join(', ')}.`,
-    ...stati.map(s => `  ${s.nome}: ${s.isAcceso ? 'acceso' : 'spento in config'} · ${s.cli === undefined ? 'CLI non trovata' : `CLI trovata${s.cli === '' ? '' : ` (${s.cli})`}`}`),
+    ...stati.map(s => `  ${s.nome === 'qwen' ? 'qwen (Qwen/Qoder)' : s.nome}: ${s.isAcceso ? 'acceso' : 'spento in config'} · ${s.cli === undefined ? 'CLI non trovata' : `CLI trovata${s.cli === '' ? '' : ` (${s.cli})`}`}`),
     'In uno sciame un compito senza `esecutore` lo riceve dalla mod, secondo la squadra impostata (/regia team): Claude oppure uno degli usabili. Uno spento viene rifiutato anche se indicato o chiamato con il suo tool.',
     'Si cambia con /regia executors codex|qwen|copilot on|off ("esecutori" in ~/.claude/regia/config.json). /regia codex|qwen on|off riguarda invece il plugin per Claude Code.',
   ].join('\n')
@@ -125,6 +126,7 @@ async function trovaInNvm($: EngineInterface, home: string, comando: string): Pr
 }
 
 async function cliDi($: EngineInterface, home: string | undefined, esecutore: EsecutoreCli): Promise<string | undefined> {
+  if (esecutore === 'qwen') return (await trovaCliQwen($))?.versione
   const versione = await versioneDi($, esecutore)
   if (versione !== undefined || home === undefined || !ANCHE_IN_NVM.includes(esecutore)) return versione
 
