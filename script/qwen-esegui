@@ -22,13 +22,54 @@ finisci() { # <exit code>
   exit "$rc"
 }
 
-compatibile() { # <qwen|qoder>
-  local comando=$1 help opzione
-  command -v "$comando" >/dev/null 2>&1 || return 1
-  help=$("$comando" --help 2>&1) || return 1
-  for opzione in --permission-mode --strict-mcp-config --session-id --name --cwd --print --resume --model --reasoning-effort; do
-    case "$help" in *"$opzione"*) ;; *) return 1 ;; esac
+archivia_precedente() {
+  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
+  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
+  rm -f "$n.esito.md"
+}
+
+fallisci_precoce() { # <messaggio>
+  printf '%s\n' "$1" >&2
+  printf '%s\n' "$1" > "$n.log"
+  finisci 127
+}
+
+PROBE_OUTPUT=''
+probe() { # comando e argomenti; al piu 5 secondi (+1 per SIGKILL)
+  local file pid rc=124 i
+  file=$(mktemp "${TMPDIR:-/tmp}/regia-qwen-probe.XXXXXX") || return 1
+  "$@" > "$file" 2>&1 &
+  pid=$!
+  for i in {1..50}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      wait "$pid"; rc=$?
+      break
+    fi
+    sleep 0.1
   done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null
+    sleep 0.1
+    kill -KILL "$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    rc=124
+  fi
+  PROBE_OUTPUT=$(cat "$file")
+  rm -f "$file"
+
+  return "$rc"
+}
+
+compatibile() { # <qwen|qoder>
+  local comando=$1 help opzioni opzione
+  command -v "$comando" >/dev/null 2>&1 || return 1
+  probe "$comando" --help || return 1
+  help=$PROBE_OUTPUT
+  opzioni=$(printf '%s\n' "$help" | grep -Eo -- '--[[:alnum:]][[:alnum:]-]*' | sort -u)
+  for opzione in --permission-mode --strict-mcp-config --session-id --name --cwd --print --resume --model --reasoning-effort; do
+    printf '%s\n' "$opzioni" | grep -Fxq -- "$opzione" || return 1
+  done
+  probe "$comando" --version || return 1
 }
 
 scegli() {
@@ -37,47 +78,50 @@ scegli() {
   return 1
 }
 
-famiglia_legacy() { # <id sessione>
+famiglia_archivio() { # <id sessione>; 1 = nessun archivio, 2 = ambiguo
   local id=$1 trovato_qwen='' trovato_qoder=''
   [ -d "$HOME/.qwen/projects" ] && trovato_qwen=$(find "$HOME/.qwen/projects" -name "$id.jsonl" -print -quit 2>/dev/null)
   [ -d "$HOME/.qoder/projects" ] && trovato_qoder=$(find "$HOME/.qoder/projects" -name "$id.jsonl" -print -quit 2>/dev/null)
   if [ -n "$trovato_qwen" ] && [ -n "$trovato_qoder" ]; then return 2; fi
   if [ -n "$trovato_qwen" ]; then echo qwen; return 0; fi
   if [ -n "$trovato_qoder" ]; then echo qoder; return 0; fi
-  scegli
+  return 1
 }
 
 CLI=''
+persisti_dopo=0
 if [ -n "$R" ]; then
+  archivia_precedente
   if [ -f "$n.cli" ]; then
     CLI=$(tr -d '[:space:]' < "$n.cli")
-    case "$CLI" in qwen|qoder) ;; *) echo "regia: famiglia Qwen/Qoder non valida in $n.cli" >&2; finisci 127 ;; esac
+    case "$CLI" in qwen|qoder) ;; *) fallisci_precoce "regia: famiglia Qwen/Qoder non valida in $n.cli" ;; esac
   else
-    CLI=$(famiglia_legacy "$R")
+    CLI=$(famiglia_archivio "$R")
     stato=$?
     if [ "$stato" -eq 2 ]; then
-      echo "regia: sessione $R presente sia in ~/.qwen sia in ~/.qoder; ripresa ambigua" >&2
-      finisci 127
+      fallisci_precoce "regia: sessione $R presente sia in ~/.qwen sia in ~/.qoder; ripresa ambigua"
     fi
-    [ "$stato" -eq 0 ] || { echo 'regia: nessuna CLI Qwen/Qoder compatibile' >&2; finisci 127; }
+    if [ "$stato" -eq 1 ]; then
+      CLI=$(scegli) || fallisci_precoce 'regia: nessuna CLI Qwen/Qoder compatibile'
+      persisti_dopo=1
+    else
+      echo "$CLI" > "$n.cli"
+    fi
   fi
-  compatibile "$CLI" || { echo "regia: la CLI registrata $CLI non e disponibile o compatibile" >&2; finisci 127; }
-  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
-  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
-  rm -f "$n.esito.md"
+  compatibile "$CLI" || fallisci_precoce "regia: la CLI registrata $CLI non e disponibile o compatibile"
   sessione=(--resume "$R"); entrata="$n.riprendi.md"
 else
-  CLI=$(scegli) || { echo 'regia: nessuna CLI Qwen/Qoder compatibile' >&2; finisci 127; }
+  CLI=$(scegli) || fallisci_precoce 'regia: nessuna CLI Qwen/Qoder compatibile'
   id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
   echo "$id" > "$n.sessione"
   sessione=(--session-id "$id"); entrata="$n.prompt.md"
+  echo "$CLI" > "$n.cli"
 fi
-echo "$CLI" > "$n.cli"
 
 argomenti=()
-[ -n "$M" ] && argomenti+=(-m "$M")
+[ -n "$M" ] && argomenti+=(--model "$M")
 [ -n "$S" ] && argomenti+=(--reasoning-effort "$S")
-argomenti+=(--permission-mode "$P" --strict-mcp-config "${sessione[@]}" -n "$n" -w "$W" -p)
+argomenti+=(--permission-mode "$P" --strict-mcp-config "${sessione[@]}" --name "$n" --cwd "$W" --print)
 comando=(nice -n 10)
 command -v timeout >/dev/null 2>&1 && comando+=(timeout "$T")
 comando+=("$CLI" "${argomenti[@]}")
@@ -85,4 +129,5 @@ comando+=("$CLI" "${argomenti[@]}")
 rc=$?
 [ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
 [ "$rc" -eq 0 ] && grep -qs 'provider_error' "$D/$n.esito.md" "$D/$n.log" && rc=1
+[ "$rc" -eq 0 ] && [ "$persisti_dopo" -eq 1 ] && echo "$CLI" > "$n.cli"
 finisci "$rc"

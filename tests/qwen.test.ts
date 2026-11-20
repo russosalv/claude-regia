@@ -24,6 +24,7 @@ const HELP_COMPATIBILE = [
 test('il resolver accetta soltanto una CLI con tutto il contratto usato dal launcher', () => {
   expect(isHelpQwenCompatibile(HELP_COMPATIBILE)).toBe(true)
   expect(isHelpQwenCompatibile(HELP_COMPATIBILE.replace('--strict-mcp-config', '--mcp-config'))).toBe(false)
+  expect(isHelpQwenCompatibile(HELP_COMPATIBILE.replace('--print', '--print-config'))).toBe(false)
 })
 
 type RispostaProcesso = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean; isStderrTruncated: boolean }
@@ -51,6 +52,18 @@ test('il resolver usa qoder se qwen manca o non e compatibile', async () => {
     const stdout = opzione === '--help' ? (isQoder ? HELP_COMPATIBILE : '--model\n--resume') : '1.1.93'
 
     return { exitCode: isQoder ? 0 : 127, stdout, stderr: isQoder ? '' : 'command not found', isStdoutTruncated: false, isStderrTruncated: false }
+  })
+
+  expect(await trovaCliQwen(engine)).toEqual({ comando: 'qoder', versione: 'qoder 1.1.93' })
+})
+
+test('il resolver usa qoder se qwen ha help compatibile ma --version fallisce', async () => {
+  const engine = engineProcesso(argv => {
+    const [comando, opzione] = argv
+    if (opzione === '--help') return { exitCode: 0, stdout: HELP_COMPATIBILE, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+    const isQoder = comando === 'qoder'
+
+    return { exitCode: isQoder ? 0 : 1, stdout: isQoder ? '1.1.93' : '', stderr: isQoder ? '' : 'version failed', isStdoutTruncated: false, isStderrTruncated: false }
   })
 
   expect(await trovaCliQwen(engine)).toEqual({ comando: 'qoder', versione: 'qoder 1.1.93' })
@@ -96,6 +109,7 @@ test('parsePs riconosce un qwen lanciato dallo script, anche dietro timeout, e n
     ' 660 40:00 qoder',
     ` 700 05:00 /bin/bash -c cd ${WORKTREE} && timeout 1500 qwen -p "ciao" --permission-mode default`,
     ` 710 05:00 /bin/bash -c qoder -p "ciao" -w ${WORKTREE}`,
+    ' 720 00:05 qoder -- explain what --print does',
     ` 800 00:05 codex exec -m gpt-6-astra -C ${WORKTREE} -o c.esito.md -`,
   ].join('\n')
   const trovati = parsePs(ps)

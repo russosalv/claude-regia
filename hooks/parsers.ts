@@ -264,9 +264,11 @@ function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[])
   const argomenti = ['qwen', 'qoder', 'qodercli']
     .map(comando => argomentiCli(token, comando))
     .find((a): a is readonly string[] => a !== undefined)
+  const separatore = argomenti?.indexOf('--') ?? -1
+  const opzioni = argomenti === undefined ? undefined : separatore < 0 ? argomenti : argomenti.slice(0, separatore)
   // Solo la modalita headless: una sessione interattiva di qualcuno non e un lavoro.
-  if (argomenti === undefined || !argomenti.some(t => t === '-p' || t === '--print')) return undefined
-  const valori = valoriOpzioni(argomenti, OPZIONI_QWEN)
+  if (opzioni === undefined || !opzioni.some(t => t === '-p' || t === '--print')) return undefined
+  const valori = valoriOpzioni(opzioni, OPZIONI_QWEN)
   const cartella = valori.get('-w') ?? valori.get('--cwd')
 
   return {

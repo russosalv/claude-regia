@@ -30,9 +30,9 @@ const engineSessioni = (o: { cli?: 'qwen' | 'qoder'; tempi: Record<string, numbe
       run: async (argv: readonly string[]) => {
         const radice = argv[1] ?? ''
         chiamate.push(radice)
-        const percorso = Object.keys(o.tempi).find(p => p.startsWith(radice) && p.endsWith('/abc.jsonl'))
+        const percorsi = Object.keys(o.tempi).filter(p => p.startsWith(radice) && p.endsWith('/abc.jsonl'))
 
-        return { exitCode: 0, stdout: percorso === undefined ? '' : `${percorso}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
+        return { exitCode: 0, stdout: percorsi.length === 0 ? '' : `${percorsi.join('\n')}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
       },
     },
   } as unknown as EngineInterface
@@ -46,6 +46,14 @@ test('il segno di vita Qoder usa la radice registrata e non quella Qwen', async 
 
   expect(await ultimoSegnoQwen(engine, HOME, log, 'n')).toBe(250)
   expect(chiamate).toEqual([`${HOME}/.qoder/projects`])
+})
+
+test('il segno di vita Qoder usa il file piu recente quando lo stesso id compare in piu progetti', async () => {
+  const vecchio = `${HOME}/.qoder/projects/vecchio/abc.jsonl`
+  const vivo = `${HOME}/.qoder/projects/nuovo/abc.jsonl`
+  const { engine, log } = engineSessioni({ cli: 'qoder', tempi: { [`${HOME}/.claude/regia/qwen/n/n.log`]: 100, [vecchio]: 150, [vivo]: 300 } })
+
+  expect(await ultimoSegnoQwen(engine, HOME, log, 'n')).toBe(300)
 })
 
 test('un lavoro registrato Qwen non consulta la sessione Qoder', async () => {

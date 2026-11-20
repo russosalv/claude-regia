@@ -21,7 +21,9 @@ const OPZIONI_RICHIESTE = [
 ] as const
 
 export function isHelpQwenCompatibile(help: string): boolean {
-  return OPZIONI_RICHIESTE.every(opzione => help.includes(opzione))
+  const opzioni = new Set(help.match(/--[a-z][a-z0-9-]*/gi) ?? [])
+
+  return OPZIONI_RICHIESTE.every(opzione => opzioni.has(opzione))
 }
 
 async function prova($: EngineInterface, comando: ComandoQwen): Promise<CliQwen | undefined> {

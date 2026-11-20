@@ -219,10 +219,10 @@ export async function ultimoSegnoQwen($: EngineInterface, home: string, log: str
   const famiglie = cli === 'qwen' || cli === 'qoder' ? [cli] : ['qwen', 'qoder']
   const tempi = await Promise.all(famiglie.map(async famiglia => {
     const r = await $.process.run(['find', `${home}/.${famiglia}/projects`, '-name', `${id}.jsonl`], { timeoutMs: 15_000 })
-    const jsonl = r.stdout.split('\n').find(x => x !== '')
-    const sessione = jsonl === undefined ? undefined : await $.fs.stat(jsonl).catch(() => undefined)
+    const jsonl = r.stdout.split('\n').filter(x => x !== '')
+    const sessioni = await Promise.all(jsonl.map(fileSessione => $.fs.stat(fileSessione).catch(() => undefined)))
 
-    return sessione?.mtimeMs ?? 0
+    return Math.max(0, ...sessioni.map(sessione => sessione?.mtimeMs ?? 0))
   }))
 
   return Math.max(stat.mtimeMs, ...tempi)
