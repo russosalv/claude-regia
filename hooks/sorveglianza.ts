@@ -14,7 +14,7 @@
 import type { EngineInterface, Timer } from 'claude-code'
 
 import type { RegiaRiga, RegiaSnapshot } from '../types/index'
-import { NOME_CLI, intestazioneLog } from './codex'
+import { ESECUTORI_CLI, NOME_CLI, intestazioneLog } from './codex'
 import type { EsecutoreCli } from './codex'
 import { leggiConfig, leggiHome, leggiProcessi } from './fonti'
 import { CONTROLLO_PREDEFINITO_MIN } from './registro'
@@ -38,7 +38,7 @@ export type StatoPrincipale = { isOccupata: boolean; fineMs: number; motivo?: st
 export type Sveglie = { impronta: string; tentativi: number; ultimaMs: number; isEsaurita: boolean; controlli: number }
 
 
-/** Una riga del pane che e un agente al lavoro (Claude, Codex, Qwen, Copilot) e non una voce del piano. */
+/** Una riga del pane che e un agente al lavoro (Claude, Codex, Qwen, Copilot, Qoder) e non una voce del piano. */
 export const isAgente = (r: RegiaRiga): boolean => r.fonte === 'claude' || r.fonte === 'codex'
 
 /** Le voci del piano ancora da chiudere: scaletta e in corso del registro. */
@@ -174,7 +174,7 @@ export function notaPassoAgente(agentId: string, oraMs: number): void {
   ultimoPasso.set(agentId, oraMs)
 }
 
-/** Uccide i processi (`codex exec`, `qwen`, `copilot`) di un lavoro: lo script scrive `fine` con exit diverso da 0. */
+/** Uccide i processi (`codex exec`, `qwen`, `copilot`, `qodercli`) di un lavoro: lo script scrive `fine` con exit diverso da 0. */
 async function uccidiCodex($: EngineInterface, nome: string): Promise<boolean> {
   const pids = (await leggiProcessi($)).dati?.filter(p => p.nome === nome).map(p => String(p.pid)) ?? []
   if (pids.length === 0) return false
@@ -203,16 +203,16 @@ async function ultimoSegnoCodex($: EngineInterface, home: string, log: string): 
 }
 
 /**
- * L'ultimo segno di vita di un Qwen. Il log (stderr) e l'esito (stdout) restano fermi fino alla fine;
+ * L'ultimo segno di vita di un Qwen (o di un Qoder, stesso formato in `~/.qoder`). Il log (stderr) e l'esito (stdout) restano fermi fino alla fine;
  * il file di sessione (`~/.qwen/projects/<cartella>/<id>.jsonl`, l'id sta in `<nome>.sessione`) si scrive a ogni passo.
  */
-async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, nome: string): Promise<number | undefined> {
+async function ultimoSegnoQwen($: EngineInterface, home: string, log: string, nome: string, cartellaCli = '.qwen'): Promise<number | undefined> {
   const stat = await $.fs.stat(log).catch(() => undefined)
   if (stat === undefined) return undefined
   const file = `${cartellaDi(log)}/${nome}.sessione`
   const id = (await $.fs.exists(file)) ? (await $.fs.read(file)).trim() : ''
   if (!/^[\w-]+$/.test(id)) return stat.mtimeMs
-  const radice = `${home}/.qwen`
+  const radice = `${home}/${cartellaCli}`
   const r = await $.process.run(['find', `${radice}/projects`, '-name', `${id}.jsonl`], { timeoutMs: 15_000 })
   const jsonl = r.stdout.split('\n').find(x => x !== '')
   const sessione = jsonl === undefined ? undefined : await $.fs.stat(jsonl).catch(() => undefined)
@@ -237,7 +237,7 @@ async function ultimoSegnoCopilot($: EngineInterface, home: string, log: string,
   return Math.max(stat.mtimeMs, ...tempi)
 }
 
-/** Gli agenti in corso fermi da troppo: i Codex, i Qwen e i Copilot li ferma, i Claude li elenca. */
+/** Gli agenti in corso fermi da troppo: i Codex, i Qwen, i Copilot e i Qoder li ferma, i Claude li elenca. */
 async function controllaStalli($: EngineInterface, home: string, inCorso: readonly RegiaRiga[], oraMs: number, stalloMs: number): Promise<string[]> {
   const righe: string[] = []
   for (const r of inCorso) {
@@ -245,10 +245,10 @@ async function controllaStalli($: EngineInterface, home: string, inCorso: readon
       if (segnalati.has(r.chiave)) continue
       const log = await $.fs.stat(r.fileLog).catch(() => undefined)
       if (log === undefined || oraMs - log.mtimeMs < stalloMs) continue
-      const esecutore: EsecutoreCli = r.esecutore === 'qwen' || r.esecutore === 'copilot' ? r.esecutore : 'codex'
+      const esecutore: EsecutoreCli = ESECUTORI_CLI.find(e => e === r.esecutore) ?? 'codex'
       const cli = NOME_CLI[esecutore]
       const segno = esecutore === 'copilot' ? await ultimoSegnoCopilot($, home, r.fileLog, r.nome)
-        : esecutore === 'qwen' ? await ultimoSegnoQwen($, home, r.fileLog, r.nome)
+        : esecutore === 'qwen' || esecutore === 'qoder' ? await ultimoSegnoQwen($, home, r.fileLog, r.nome, esecutore === 'qoder' ? '.qoder' : '.qwen')
           : await ultimoSegnoCodex($, home, r.fileLog)
       if (segno === undefined || oraMs - segno < stalloMs) continue
       segnalati.add(r.chiave)

@@ -3,7 +3,7 @@
 // di Qwen per Claude Code, se mancano, una volta per versione. Dopo vivono di
 // vita sua: la mod non lo aggiorna e, se viene tolto, non lo rimette fino alla
 // versione successiva. Chi non li vuole ha `/regia ponytail|codex|qwen off`.
-// Questi comandi riguardano solo i plugin: gli esecutori Codex, Qwen e Copilot
+// Questi comandi riguardano solo i plugin: gli esecutori Codex, Qwen, Copilot e Qoder
 // (sciame e `*_avvia`) si accendono e si spengono con `/regia executors`.
 
 import type { EngineInterface } from 'claude-code'

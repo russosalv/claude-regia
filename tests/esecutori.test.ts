@@ -7,6 +7,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { percorsiLavoro } from '../hooks/codex'
+import type { EsecutoreCli } from '../hooks/codex'
 import { leggiArgomentiEsecutori } from '../hooks/comando-opzioni'
 import { testoDoctor } from '../hooks/doctor'
 import { rigaEsecutori, soloUsabili, statoEsecutori, testoEsecutori } from '../hooks/esecutori'
@@ -22,12 +23,14 @@ import type { Ambiente } from './ambiente'
 import { resa } from './resa'
 import { chiama, comando, compiti, domande, esterni, haiku, lungo, motore, sciami, testoDi } from './sciame-finto'
 
-const TUTTI = ['codex', 'qwen', 'copilot'] as const
+const TUTTI = ['codex', 'qwen', 'copilot', 'qoder'] as const
+/** Gli esecutori di prima di qoder: le prove della rotazione restano quelle di allora. */
+const TRE = ['codex', 'qwen', 'copilot'] as const
 const ESTERNI = { squadra: 'esterni', quota: 50 } as const
 const compito = (nome: string, extra: { scrive?: boolean; prompt?: string; tipo?: string } = {}) =>
   ({ nome, prompt: extra.prompt ?? lungo(`fai ${nome}`), scrive: extra.scrive ?? false, ...(extra.tipo === undefined ? {} : { tipo: extra.tipo }) })
 
-test('config: "esecutori" e una lista fra codex, qwen, copilot; predefiniti tutti, i nomi sconosciuti si tolgono con un avviso', () => {
+test('config: "esecutori" e una lista fra codex, qwen, copilot, qoder; predefiniti tutti, i nomi sconosciuti si tolgono con un avviso', () => {
   expect(parseConfig({}, HOME).config.esecutori).toEqual([...TUTTI])
   expect(parseConfig({ esecutori: ['qwen', ' Codex ', 'qwen'] }, HOME)).toMatchObject({ config: { esecutori: ['codex', 'qwen'] }, avvisi: [] })
   // Lista vuota: lavora solo Claude, senza avvisi.
@@ -35,34 +38,34 @@ test('config: "esecutori" e una lista fra codex, qwen, copilot; predefiniti tutt
 
   const ignoti = parseConfig({ esecutori: ['copilot', 'gemini', 7] }, HOME)
   expect(ignoti.config.esecutori).toEqual(['copilot'])
-  expect(ignoti.avvisi).toEqual(['config.json: in "esecutori" tolti i nomi sconosciuti "gemini", 7 (validi: codex, qwen, copilot)'])
+  expect(ignoti.avvisi).toEqual(['config.json: in "esecutori" tolti i nomi sconosciuti "gemini", 7 (validi: codex, qwen, copilot, qoder)'])
 
   const nonLista = parseConfig({ esecutori: 'codex' }, HOME)
   expect(nonLista.config.esecutori).toEqual([...TUTTI])
-  expect(nonLista.avvisi).toEqual(['config.json: "esecutori" deve essere una lista fra codex, qwen, copilot'])
+  expect(nonLista.avvisi).toEqual(['config.json: "esecutori" deve essere una lista fra codex, qwen, copilot, qoder'])
 })
 
 test('usabile e chi e acceso in config e ha la CLI: il doctor e /regia executors dicono chi no e perche', () => {
   const stati = statoEsecutori(['codex', 'copilot'], { codex: 'codex-cli 1.2', qwen: 'qwen 0.9' })
 
   expect(soloUsabili(stati)).toEqual(['codex'])
-  expect(rigaEsecutori(stati)).toBe('Esecutori: usabili codex; qwen no (spento in config), copilot no (CLI non trovata) — /regia executors.')
-  expect(rigaEsecutori(statoEsecutori([], {}))).toBe('Esecutori: nessuno usabile, negli sciami lavora solo Claude; codex no (spento in config, CLI non trovata), qwen no (spento in config, CLI non trovata), copilot no (spento in config, CLI non trovata) — /regia executors.')
-  expect(rigaEsecutori(statoEsecutori([...TUTTI], { codex: 'a', qwen: 'b', copilot: 'c' }))).toBe('Esecutori: usabili codex, qwen, copilot — /regia executors.')
+  expect(rigaEsecutori(stati)).toBe('Esecutori: usabili codex; qwen no (spento in config), copilot no (CLI non trovata), qoder no (spento in config, CLI non trovata) — /regia executors.')
+  expect(rigaEsecutori(statoEsecutori([], {}))).toBe('Esecutori: nessuno usabile, negli sciami lavora solo Claude; codex no (spento in config, CLI non trovata), qwen no (spento in config, CLI non trovata), copilot no (spento in config, CLI non trovata), qoder no (spento in config, CLI non trovata) — /regia executors.')
+  expect(rigaEsecutori(statoEsecutori([...TUTTI], { codex: 'a', qwen: 'b', copilot: 'c', qoder: 'd' }))).toBe('Esecutori: usabili codex, qwen, copilot, qoder — /regia executors.')
 
   const testo = testoEsecutori(stati)
   expect(testo).toContain('Esecutori esterni usabili ora: codex.')
   expect(testo).toContain('  codex: acceso · CLI trovata (codex-cli 1.2)')
   expect(testo).toContain('  qwen: spento in config · CLI trovata (qwen 0.9)')
   expect(testo).toContain('  copilot: acceso · CLI non trovata')
-  expect(testo).toContain('/regia executors codex|qwen|copilot on|off')
+  expect(testo).toContain('/regia executors codex|qwen|copilot|qoder on|off')
   expect(testoEsecutori(statoEsecutori([], {}))).toContain('usabili ora: nessuno, negli sciami lavora solo Claude.')
 
   const dati = {
     versione: '1.2.3', radice: '/p', config: parseConfig({ esecutori: ['codex', 'qwen'] }, HOME).config, isConfigPresente: true, percorsoConfig: '/c.json',
     avvisi: [], haSuperficie: true, haAgent: true, isPonytail: false, sciamiAttivi: 0, repo: '/r', codex: 'codex-cli 1', copilot: 'Copilot 1',
   }
-  expect(testoDoctor(dati)).toContain('Esecutori: usabili codex; qwen no (CLI non trovata), copilot no (spento in config) — /regia executors.')
+  expect(testoDoctor(dati)).toContain('Esecutori: usabili codex; qwen no (CLI non trovata), copilot no (spento in config), qoder no (spento in config, CLI non trovata) — /regia executors.')
 })
 
 test('gli argomenti di /regia executors: mostra, accende o spegne uno dei tre; il resto e sbagliato o non e questo comando', () => {
@@ -115,23 +118,23 @@ test('della risposta di haiku si tengono solo i compiti chiesti e solo claude o 
 })
 
 test('il ripiego: i compiti lunghi a rotazione sugli esterni, al meno carico, chi scrive da codex e chi legge da qwen; i brevi restano a Claude', () => {
-  const scelte = (compiti: ReturnType<typeof compito>[], usabili: readonly ('codex' | 'qwen' | 'copilot')[], carico?: Map<string, number>) =>
+  const scelte = (compiti: ReturnType<typeof compito>[], usabili: readonly EsecutoreCli[], carico?: Map<string, number>) =>
     [...ripiegoEsecutori(compiti, usabili, carico)].map(([nome, s]) => `${nome}:${s.esecutore}`)
   const scrive = (nome: string) => compito(nome, { scrive: true })
 
   // Chi scrive: codex, copilot, qwen; poi di nuovo dal primo.
-  expect(scelte([scrive('a'), scrive('b'), scrive('c'), scrive('d')], [...TUTTI])).toEqual(['a:codex', 'b:copilot', 'c:qwen', 'd:codex'])
+  expect(scelte([scrive('a'), scrive('b'), scrive('c'), scrive('d')], [...TRE])).toEqual(['a:codex', 'b:copilot', 'c:qwen', 'd:codex'])
   // Chi legge: qwen, codex, copilot.
-  expect(scelte([compito('a'), compito('b'), compito('c'), compito('d')], [...TUTTI])).toEqual(['a:qwen', 'b:codex', 'c:copilot', 'd:qwen'])
+  expect(scelte([compito('a'), compito('b'), compito('c'), compito('d')], [...TRE])).toEqual(['a:qwen', 'b:codex', 'c:copilot', 'd:qwen'])
   // Misti: conta il carico di tutti, non il tipo di compito.
-  expect(scelte([scrive('a'), compito('b'), scrive('c'), compito('d')], [...TUTTI])).toEqual(['a:codex', 'b:qwen', 'c:copilot', 'd:qwen'])
+  expect(scelte([scrive('a'), compito('b'), scrive('c'), compito('d')], [...TRE])).toEqual(['a:codex', 'b:qwen', 'c:copilot', 'd:qwen'])
   // Solo fra gli usabili, e partendo da chi ha gia meno compiti.
   expect(scelte([scrive('a'), scrive('b'), scrive('c')], ['codex', 'qwen'])).toEqual(['a:codex', 'b:qwen', 'c:codex'])
-  expect(scelte([scrive('a'), scrive('b')], [...TUTTI], new Map([['codex', 2], ['copilot', 1]]))).toEqual(['a:qwen', 'b:copilot'])
+  expect(scelte([scrive('a'), scrive('b')], [...TRE], new Map([['codex', 2], ['copilot', 1]]))).toEqual(['a:qwen', 'b:copilot'])
 
   // Sotto la soglia un prompt non e autosufficiente: resta a Claude e non entra nel conto.
   const breve = compito('breve', { prompt: 'x'.repeat(MINIMO_AUTOSUFFICIENTE - 1) })
-  const esito = ripiegoEsecutori([breve, compito('giusto', { prompt: 'x'.repeat(MINIMO_AUTOSUFFICIENTE) }), compito('altro')], [...TUTTI])
+  const esito = ripiegoEsecutori([breve, compito('giusto', { prompt: 'x'.repeat(MINIMO_AUTOSUFFICIENTE) }), compito('altro')], [...TRE])
   expect(esito.get('breve')).toEqual({ esecutore: 'claude', motivo: 'ripiego: compito breve' })
   expect(esito.get('giusto')).toEqual({ esecutore: 'qwen', motivo: 'ripiego: a rotazione' })
   expect(esito.get('altro')?.esecutore).toBe('codex')
@@ -140,7 +143,7 @@ test('il ripiego: i compiti lunghi a rotazione sugli esterni, al meno carico, ch
 
 test('assegnare: prima i vincoli, poi cio che haiku ha detto, poi il ripiego per chi resta (contando chi haiku ha gia caricato)', () => {
   const compiti = [compito('rev', { tipo: 'code-reviewer' }), compito('a', { scrive: true }), compito('b', { scrive: true }), compito('c'), compito('corto', { prompt: 'guarda il file' })]
-  const con = (risposta: string | undefined) => Object.fromEntries([...assegnaEsecutori(compiti, [...TUTTI], risposta, ESTERNI)].map(([nome, s]) => [nome, `${s.esecutore} · ${s.motivo}`]))
+  const con = (risposta: string | undefined) => Object.fromEntries([...assegnaEsecutori(compiti, [...TRE], risposta, ESTERNI)].map(([nome, s]) => [nome, `${s.esecutore} · ${s.motivo}`]))
 
   expect(con('{"a":"codex","c":"claude","rev":"qwen","b":"gemini"}')).toEqual({
     rev: 'claude · scelto dalla mod: tipo di agente Claude',
@@ -160,6 +163,21 @@ test('assegnare: prima i vincoli, poi cio che haiku ha detto, poi il ripiego per
   })
   // Senza esterni usabili non c'e nulla da chiedere ne da distribuire.
   expect([...assegnaEsecutori(compiti, [], undefined, ESTERNI).values()].every(s => s.esecutore === 'claude' && s.motivo === 'scelto dalla mod: nessun esterno usabile' || s.motivo.endsWith('tipo di agente Claude'))).toBe(true)
+})
+
+test('con qoder usabile il ripiego lo preferisce a qwen (stessi modelli Qwen): chi legge parte da qoder, chi scrive lo prova dopo codex e copilot', () => {
+  const scelte = (compiti: ReturnType<typeof compito>[], usabili: readonly EsecutoreCli[]) =>
+    [...ripiegoEsecutori(compiti, usabili)].map(([nome, s]) => `${nome}:${s.esecutore}`)
+  const scrive = (nome: string) => compito(nome, { scrive: true })
+
+  expect(scelte([compito('a'), compito('b'), compito('c'), compito('d'), compito('e')], [...TUTTI])).toEqual(['a:qoder', 'b:qwen', 'c:codex', 'd:copilot', 'e:qoder'])
+  expect(scelte([scrive('a'), scrive('b'), scrive('c'), scrive('d')], [...TUTTI])).toEqual(['a:codex', 'b:copilot', 'c:qoder', 'd:qwen'])
+  // Senza qoder resta tutto com'era.
+  expect(scelte([compito('a'), compito('b')], TRE)).toEqual(['a:qwen', 'b:codex'])
+  // Haiku vede qoder fra gli esecutori e lo sente come il Qwen da preferire.
+  const prompt = promptEsecutori([compito('a')], ['qoder', 'qwen'], ESTERNI)
+  expect(prompt).toContain('- qoder: come qwen (modelli Qwen) ma con un lancio che funziona meglio')
+  expect([...leggiEsecutori('{"a":"qoder"}', ['a'], ['qoder'])]).toEqual([['a', 'qoder']])
 })
 
 function lavagna(compiti: unknown): Sciame {
@@ -318,20 +336,22 @@ test('/regia executors mostra chi e acceso e chi ha la CLI, e accende o spegne r
   const prima = String((await comando($, 'executors')).text)
   expect(prima).toContain('Esecutori esterni usabili ora: codex, qwen.')
   expect(prima).toContain('  copilot: acceso · CLI non trovata')
+  expect(prima).toContain('  qoder: acceso · CLI non trovata')
   expect(amb.scritti.size).toBe(0)
 
   const spento = String((await comando($, 'executors codex off')).text)
-  expect(config()).toEqual({ orchestra: 'guida', esecutori: ['qwen', 'copilot'] })
+  expect(config()).toEqual({ orchestra: 'guida', esecutori: ['qwen', 'copilot', 'qoder'] })
   expect(spento).toContain('Esecutori esterni usabili ora: qwen.')
   expect(spento).toContain('  codex: spento in config · CLI trovata')
   await comando($, 'esecutori qwen off')
   await comando($, 'executors copilot off')
+  await comando($, 'executors qoder off')
   expect(config().esecutori).toEqual([])
   expect(String((await comando($, 'executors')).text)).toContain('usabili ora: nessuno, negli sciami lavora solo Claude.')
   expect(String((await comando($, 'executors codex on')).text)).toContain('Esecutori esterni usabili ora: codex.')
   expect(config().esecutori).toEqual(['codex'])
-  expect(String((await comando($, 'executors codex')).text)).toBe('regia: /regia executors mostra gli esecutori; /regia executors codex|qwen|copilot on|off ne accende o spegne uno.')
-  expect(String((await comando($, 'doctor')).text)).toContain('Esecutori: usabili codex; qwen no (spento in config), copilot no (spento in config, CLI non trovata) — /regia executors.')
+  expect(String((await comando($, 'executors codex')).text)).toBe('regia: /regia executors mostra gli esecutori; /regia executors codex|qwen|copilot|qoder on|off ne accende o spegne uno.')
+  expect(String((await comando($, 'doctor')).text)).toContain('Esecutori: usabili codex; qwen no (spento in config), copilot no (spento in config, CLI non trovata), qoder no (spento in config, CLI non trovata) — /regia executors.')
 
   // `/regia codex off` tocca solo il plugin, e lo dice.
   const plugin = String((await comando($, 'codex off')).text)
@@ -364,9 +384,9 @@ test('senza le CLI non si chiede nulla ad haiku e tutto resta a Claude; un esecu
   expect(Object.values(compiti(amb)).map(c => `${c.nome}: ${c.esecutore} · ${c.motivoEsecutore}`)).toEqual(['a: claude · scelto dalla mod: nessun esterno usabile', 'b: copilot · indicato'])
   expect(m.claude()).toEqual(['a'])
   expect(esterni(amb)).toEqual(['copilot:b'])
-  // Le tre CLI si interrogano una volta, non a ogni giro dello sciame.
+  // Le quattro CLI si interrogano una volta, non a ogni giro dello sciame.
   await amb.clock?.advance(30_000)
-  expect(amb.lanci.filter(l => l.argv[1] === '--version').map(l => l.argv[0])).toEqual([...TUTTI])
+  expect(amb.lanci.filter(l => l.argv[1] === '--version').map(l => l.argv[0])).toEqual(['codex', 'qwen', 'copilot', 'qodercli'])
 })
 
 test('la CLI di un esterno scelto dalla mod manca al lancio (exit 127): il compito passa a Claude invece di fallire due volte', async ($, on) => {

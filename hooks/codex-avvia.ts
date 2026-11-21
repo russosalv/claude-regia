@@ -6,6 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import {
   ESECUTORI_CLI,
   NOME_CLI,
+  QODER_MODELLO_PREDEFINITO,
   argvLancio,
   componiPrompt,
   permessoQwen,
@@ -56,7 +57,19 @@ export const DESCRIZIONE_COPILOT_AVVIA = [
   PER_CHI_LO_CHIEDE,
 ].join(' ')
 
-const TOOL_AVVIA: Readonly<Record<EsecutoreCli, string>> = { codex: NOME_TOOL_AVVIA, qwen: NOME_TOOL_QWEN_AVVIA, copilot: NOME_TOOL_COPILOT_AVVIA }
+export const NOME_TOOL_QODER_AVVIA = 'qoder_avvia'
+
+export const DESCRIZIONE_QODER_AVVIA = [
+  `Lancia un lavoro Qoder CLI (qodercli -p) in background in una cartella, staccato dalla sessione, con i modelli Qwen (predefinito ${QODER_MODELLO_PREDEFINITO}): e il modo preferito per usare Qwen, perche qwen_avvia (Qwen Code) lavora male. Gemello di qwen_avvia.`,
+  'Scrive prompt, log ed esito in ~/.claude/regia/qoder/<nome>/ e registra inizio e fine in ~/.claude/regia/qoder/esegui.log; il pane Regia lo mostra come i Codex.',
+  'Con scrive=true (predefinito) Qoder puo cambiare file e lanciare comandi (--permission-mode auto); con scrive=false solo leggere (--permission-mode default: tutto cio che chiede un permesso viene negato).',
+  'Accoda al prompt le regole (predefinite: <progetto>/.regia/regole.md). Risponde subito con pid e percorsi. Rifiuta un nome gia in corso.',
+  PER_CHI_LO_CHIEDE,
+].join(' ')
+
+const TOOL_AVVIA: Readonly<Record<EsecutoreCli, string>> = {
+  codex: NOME_TOOL_AVVIA, qwen: NOME_TOOL_QWEN_AVVIA, copilot: NOME_TOOL_COPILOT_AVVIA, qoder: NOME_TOOL_QODER_AVVIA,
+}
 
 type Esito = { testo?: string; errore?: string }
 
@@ -73,7 +86,7 @@ export async function installaScript($: EngineInterface, home: string, nome: str
   return destinazione
 }
 
-/** Vero se un lavoro con quel nome e vivo (Codex, Qwen o Copilot): il processo, o lo script che aspetta di riprovare. */
+/** Vero se un lavoro con quel nome e vivo (Codex, Qwen, Copilot o Qoder): il processo, o lo script che aspetta di riprovare. */
 export async function isInCorso($: EngineInterface, home: string, nome: string): Promise<boolean> {
   const processi = await leggiProcessi($)
   if (processi.dati?.some(p => p.nome === nome) === true) return true
@@ -142,7 +155,7 @@ async function prepara($: EngineInterface, argomenti: unknown): Promise<Preparat
 
 /**
  * Lancia lo script staccato; con `riprendi` (id della sessione della CLI) riprende invece di partire da capo.
- * `permesso` e solo di Qwen e Copilot (`auto` o `default`); `sforzo` vuoto lascia decidere alla CLI.
+ * `permesso` e solo di Qwen, Copilot e Qoder (`auto` o `default`); `sforzo` vuoto lascia decidere alla CLI.
  */
 export async function lancia(
   $: EngineInterface,
@@ -190,7 +203,7 @@ function risposta(p: Preparato, pid: number, modello: string | undefined, s: Sce
   ].join('\n')
 }
 
-/** Lo sforzo di Qwen e di Copilot: quello dato, o nessuno (decide la CLI): niente giudizio di haiku per un solo flag. */
+/** Lo sforzo di Qwen, Copilot e Qoder: quello dato, o nessuno (decide la CLI): niente giudizio di haiku per un solo flag. */
 function sforzoQwen(dato: Sforzo | undefined): Scelta {
   return dato === undefined
     ? { sforzo: '', motivo: 'non indicato', daChi: 'chiamata' }
@@ -199,7 +212,7 @@ function sforzoQwen(dato: Sforzo | undefined): Scelta {
 
 /**
  * Il corpo del tool: `{ result }` se e partito, `{ deny }` con il motivo se no.
- * `esecutore` sceglie la CLI: `codex_avvia` (predefinito), `qwen_avvia` o `copilot_avvia`.
+ * `esecutore` sceglie la CLI: `codex_avvia` (predefinito), `qwen_avvia`, `copilot_avvia` o `qoder_avvia`.
  */
 export async function codexAvvia(
   $: EngineInterface,
@@ -212,7 +225,7 @@ export async function codexAvvia(
     if (typeof p === 'string') return { deny: `${tool}: ${p}` }
     const config = (await leggiConfig($, p.home)).dati
     if (!config.esecutori.includes(esecutore)) return { deny: `${tool}: ${messaggioSpento(esecutore)}` }
-    const daConfig = esecutore === 'codex' ? config.codexModello : esecutore === 'copilot' ? config.copilotModello : undefined
+    const daConfig = { codex: config.codexModello, copilot: config.copilotModello, qoder: config.qoderModello ?? QODER_MODELLO_PREDEFINITO, qwen: undefined }[esecutore]
     const modello = p.richiesta.modello ?? daConfig
     const sforzo: Scelta = esecutore === 'codex' ? await scegliSforzo($, p.richiesta.prompt, p.richiesta.sforzo) : sforzoQwen(p.richiesta.sforzo)
     const percorsi = percorsiLavoro(p.home, p.richiesta.nome, esecutore)

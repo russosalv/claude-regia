@@ -148,7 +148,7 @@ test('validaRegistro rifiuta una radice senza lista di lavori', () => {
 test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
   const ok = parseConfig({ codexLogs: ['~/a/log', '/b/log'], aggiornamentoSecondi: 30 }, '/home/u')
   expect(ok.config).toEqual({
-    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log'],
+    codexLogs: ['/home/u/a/log', '/b/log', '/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log', '/home/u/.claude/regia/qoder/esegui.log'],
     aggiornamentoSecondi: 30,
     instradamento: true,
     modelli: {},
@@ -163,7 +163,7 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
     attesaMinuti: 45,
     controlloMinuti: [15, 30, 60],
     quickModello: 'sonnet',
-    esecutori: ['codex', 'qwen', 'copilot'],
+    esecutori: ['codex', 'qwen', 'copilot', 'qoder'],
     squadra: 'mista',
     squadraQuota: 50,
     compatta: true,
@@ -173,10 +173,13 @@ test('parseConfig espande ~ e torna ai predefiniti con un avviso', () => {
 
   const vuota = parseConfig({}, '/home/u')
   expect(vuota.config.aggiornamentoSecondi).toBe(15)
-  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log'])
+  expect(vuota.config.codexLogs).toEqual(['/home/u/.claude/regia/codex/esegui.log', '/home/u/.claude/regia/qwen/esegui.log', '/home/u/.claude/regia/copilot/esegui.log', '/home/u/.claude/regia/qoder/esegui.log'])
   expect(vuota.config.codexModello).toBeUndefined()
   expect(vuota.config.copilotModello).toBeUndefined()
   expect(parseConfig({ copilotModello: ' claude-sonnet-4.6 ' }, '/home/u').config.copilotModello).toBe('claude-sonnet-4.6')
+  expect(vuota.config.qoderModello).toBeUndefined()
+  expect(parseConfig({ qoderModello: ' Qwen3.8-Max ' }, '/home/u').config.qoderModello).toBe('Qwen3.8-Max')
+  expect(parseConfig({ qoderModello: 'due parole' }, '/home/u').avvisi).toEqual(['config.json: "qoderModello" non e un nome valido'])
   expect(parseConfig({ copilotModello: 'due parole' }, '/home/u').avvisi).toEqual(['config.json: "copilotModello" non e un nome valido'])
 
   const storta = parseConfig({ codexLogs: 'no', aggiornamentoSecondi: 0 }, '/home/u')

@@ -343,7 +343,7 @@ function perPane(m: Messaggio): RegiaMessaggio {
   return { id: m.id, da: m.da, a: m.a, testo: m.testo, ora: m.ora, stato: m.stato }
 }
 
-export type Conteggi = { codex: number; qwen: number; copilot: number; claude: number; altri: number; scaletta: number }
+export type Conteggi = { codex: number; qwen: number; copilot: number; qoder: number; claude: number; altri: number; scaletta: number }
 
 export function contaVista(vista: RegiaVistaDati): Conteggi {
   const per = (fonte: RegiaRiga['fonte']) =>
@@ -351,11 +351,13 @@ export function contaVista(vista: RegiaVistaDati): Conteggi {
   const di = (esecutore: string) => vista.inCorso.filter(r => r.fonte === 'codex' && r.esecutore === esecutore).length
   const qwen = di('qwen')
   const copilot = di('copilot')
+  const qoder = di('qoder')
 
   return {
-    codex: per('codex') - qwen - copilot,
+    codex: per('codex') - qwen - copilot - qoder,
     qwen,
     copilot,
+    qoder,
     claude: per('claude'),
     altri: per('registro'),
     scaletta: vista.scaletta.length + vista.scalettaExtra,
@@ -374,6 +376,7 @@ export function testoStato(snapshot: RegiaSnapshot): string | undefined {
     c.codex > 0 ? `${c.codex} codex` : undefined,
     c.qwen > 0 ? `${c.qwen} qwen` : undefined,
     c.copilot > 0 ? `${c.copilot} copilot` : undefined,
+    c.qoder > 0 ? `${c.qoder} qoder` : undefined,
     c.claude > 0 ? `${c.claude} claude` : undefined,
     c.altri > 0 ? `${c.altri} altri` : undefined,
     c.scaletta > 0 ? `${c.scaletta} da fare` : undefined,
@@ -395,7 +398,7 @@ export function riepilogoTestuale(snapshot: RegiaSnapshot, vista: RegiaVista): s
   const c = contaVista(dati)
   const quale = vista === 'tutti' ? 'tutta la macchina' : 'questa sessione'
   const intestazione =
-    `Regia (${quale}): ${dati.inCorso.length} in corso (${c.codex} codex${c.qwen > 0 ? `, ${c.qwen} qwen` : ''}${c.copilot > 0 ? `, ${c.copilot} copilot` : ''}, ${c.claude} claude, ${c.altri} altri), ` +
+    `Regia (${quale}): ${dati.inCorso.length} in corso (${c.codex} codex${c.qwen > 0 ? `, ${c.qwen} qwen` : ''}${c.copilot > 0 ? `, ${c.copilot} copilot` : ''}${c.qoder > 0 ? `, ${c.qoder} qoder` : ''}, ${c.claude} claude, ${c.altri} altri), ` +
     `${c.scaletta} in scaletta, ${dati.fatti.length + dati.fattiExtra} fatti.`
   const righe = dati.inCorso.slice(0, 6).map(rigaRiepilogo)
   const avvisi = snapshot.avvisi.map(a => `Attenzione: ${a}`)

@@ -219,6 +219,7 @@ const A_CHE_SERVE: Readonly<Record<Esecutore, string>> = {
   codex: 'implementazione autonoma di un compito ben specificato, debug, revisione del codice, audit.',
   qwen: 'modifiche meccaniche o in blocco, leggere e riassumere molto codice, documentazione, test; il piu economico.',
   copilot: 'implementazione autonoma di un compito ben specificato; un\'altra famiglia di modelli per una seconda implementazione o un secondo parere.',
+  qoder: 'come qwen (modelli Qwen) ma con un lancio che funziona meglio: se qoder e fra gli esecutori preferiscilo a qwen.',
 }
 
 /** In `mista` gli esterni ricevono solo questo. */
@@ -226,6 +227,7 @@ const CHE_COSA_RICEVE: Readonly<Record<EsecutoreCli, string>> = {
   codex: 'revisione indipendente, audit, debug, un\'implementazione isolata e ben specificata.',
   qwen: 'modifiche meccaniche o in blocco, leggere e riassumere molto codice, documentazione, test; il piu economico.',
   copilot: 'una seconda implementazione o un secondo parere da un\'altra famiglia di modelli, un\'implementazione isolata e ben specificata.',
+  qoder: 'come qwen (modelli Qwen) ma preferito a qwen: modifiche meccaniche o in blocco, leggere e riassumere molto codice, documentazione, test.',
 }
 
 /** Per quale squadra si scrive il prompt: con `claude` non si chiede nulla. `tetto`: quanti dei compiti chiesti possono andare agli esterni. */
@@ -277,8 +279,9 @@ export function leggiEsecutori(testo: string, nomi: readonly string[], usabili: 
   return letti
 }
 
-const ORDINE_SCRIVE: readonly EsecutoreCli[] = ['codex', 'copilot', 'qwen']
-const ORDINE_LEGGE: readonly EsecutoreCli[] = ['qwen', 'codex', 'copilot']
+// qoder (Qwen via Qoder CLI) precede qwen: stessi modelli, ma e quello che funziona.
+const ORDINE_SCRIVE: readonly EsecutoreCli[] = ['codex', 'copilot', 'qoder', 'qwen']
+const ORDINE_LEGGE: readonly EsecutoreCli[] = ['qoder', 'qwen', 'codex', 'copilot']
 
 /** L'esterno usabile con meno compiti; a pari carico il primo dell'ordine che conviene a chi scrive o a chi legge. */
 function menoCarico(scrive: boolean, usabili: readonly EsecutoreCli[], conta: ReadonlyMap<string, number>): EsecutoreCli | undefined {
@@ -317,8 +320,8 @@ export function ripiegoEsecutori(
 /** Un compito che haiku, o il ripiego, darebbe a un esterno. `proposto`: l'esecutore detto da haiku; senza, lo decide il carico. */
 type Candidato = { compito: CompitoDaAssegnare; proposto?: EsecutoreCli }
 
-/** Chi resta agli esterni quando i candidati superano il tetto: prima chi legge soltanto, poi cio che haiku ha dato a qwen (lavoro in blocco, documentazione, test), poi l'ordine della chiamata. */
-const preferenza = (x: Candidato): number => (!x.compito.scrive ? 0 : x.proposto === 'qwen' ? 1 : 2)
+/** Chi resta agli esterni quando i candidati superano il tetto: prima chi legge soltanto, poi cio che haiku ha dato a qwen o qoder (lavoro in blocco, documentazione, test), poi l'ordine della chiamata. */
+const preferenza = (x: Candidato): number => (!x.compito.scrive ? 0 : x.proposto === 'qwen' || x.proposto === 'qoder' ? 1 : 2)
 
 /**
  * `mista`: Claude tiene tutto tranne i candidati che stanno nei `posti`. I candidati sono i compiti che haiku ha dato

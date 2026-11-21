@@ -17,7 +17,7 @@ export type RegiaRiga = {
   chiave: string
   nome: string
   fonte: RegiaFonte
-  /** `claude:<tipo>`, `codex`, `qwen`, `copilot` oppure quello scritto nel registro. */
+  /** `claude:<tipo>`, `codex`, `qwen`, `copilot`, `qoder` oppure quello scritto nel registro. */
   esecutore: string
   stato: RegiaStato
   modello?: string

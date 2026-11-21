@@ -202,7 +202,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'regia',
       description: 'Open the Regia pane and summarize running, queued and finished agents',
-      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | compact [on|off|30-90|now] | models [on|off] | orchestra [strict|guide|off] | team [claude|mixed|external|0-100] | savings [on|off] | executors [codex|qwen|copilot on|off] | ponytail|codex|qwen [on|off]]',
+      argumentHint: '[long|medium|quick [goal] | away | here | all | doctor | swarm | wake [on|off] | compact [on|off|30-90|now] | models [on|off] | orchestra [strict|guide|off] | team [claude|mixed|external|0-100] | savings [on|off] | executors [codex|qwen|copilot|qoder on|off] | ponytail|codex|qwen [on|off]]',
     })
     await registraStrumenti($)
     await installaPosta($)
@@ -273,6 +273,20 @@ export const register: Register = on => {
 
     return esito
   }).catch(($, e, next) => (next.called ? next(e) : { deny: 'copilot_riprendi: errore interno della mod regia' }))
+
+  on('tool.call', { tool: 'mcp__regia__qoder_avvia' }, async ($, e) => {
+    const esito = await codexAvvia($, e, 'qoder')
+    void leggiOra($)
+
+    return esito
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'qoder_avvia: errore interno della mod regia' }))
+
+  on('tool.call', { tool: 'mcp__regia__qoder_riprendi' }, async ($, e) => {
+    const esito = await codexRiprendi($, e, 'qoder_riprendi')
+    void leggiOra($)
+
+    return esito
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: 'qoder_riprendi: errore interno della mod regia' }))
 
   on('tool.call', { tool: 'mcp__regia__posta_invia' }, async ($, e) => {
     const esito = await toolInvia($, e)

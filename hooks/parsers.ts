@@ -3,7 +3,7 @@
 
 export type ProcessoCodex = {
   /** Assente vale `codex`. */
-  esecutore?: 'qwen' | 'copilot'
+  esecutore?: 'qwen' | 'copilot' | 'qoder'
   pid: number
   durataSec: number
   nome: string
@@ -55,11 +55,11 @@ export function cartellaLavoro(percorsoLog: string, nome: string): string {
   return RE_RADICE_LAVORI.test(cartella) ? `${cartella}/${nome}` : cartella
 }
 
-const RE_RADICE_LAVORI = /\/\.claude\/regia\/(codex|qwen|copilot)$/
+const RE_RADICE_LAVORI = /\/\.claude\/regia\/(codex|qwen|copilot|qoder)$/
 
-/** Di quale CLI e un log: quelli di `qwen_avvia` stanno in `~/.claude/regia/qwen/`, quelli di `copilot_avvia` in `~/.claude/regia/copilot/`. */
-export function esecutoreDelLog(percorsoLog: string): 'codex' | 'qwen' | 'copilot' {
-  return (RE_RADICE_LAVORI.exec(cartellaDi(percorsoLog))?.[1] ?? 'codex') as 'codex' | 'qwen' | 'copilot'
+/** Di quale CLI e un log: quelli di `qwen_avvia` stanno in `~/.claude/regia/qwen/`, quelli di `copilot_avvia` in `~/.claude/regia/copilot/`, quelli di `qoder_avvia` in `~/.claude/regia/qoder/`. */
+export function esecutoreDelLog(percorsoLog: string): 'codex' | 'qwen' | 'copilot' | 'qoder' {
+  return (RE_RADICE_LAVORI.exec(cartellaDi(percorsoLog))?.[1] ?? 'codex') as 'codex' | 'qwen' | 'copilot' | 'qoder'
 }
 
 export function espandiTilde(percorso: string, home: string): string {
@@ -259,19 +259,19 @@ function valoriOpzioni(argomenti: readonly string[], opzioni: ReadonlySet<string
   return valori
 }
 
-/** Un `qwen` lanciato da `qwen-esegui`. Nome dal `-n`, cartella dal `-w`. */
-function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[]): ProcessoCodex | undefined {
-  const argomenti = argomentiCli(token, 'qwen')
-  // Solo `qwen -p`: una sessione interattiva di qualcuno non e un lavoro.
+/** Un `qwen` (o un `qodercli`, stesse opzioni) lanciato da `qwen-esegui` (`qoder-esegui`). Nome dal `-n`, cartella dal `-w`. */
+function leggiRigaQwen(pid: number, durataSec: number, token: readonly string[], esecutore: 'qwen' | 'qoder' = 'qwen'): ProcessoCodex | undefined {
+  const argomenti = argomentiCli(token, esecutore === 'qoder' ? 'qodercli' : 'qwen')
+  // Solo `-p`: una sessione interattiva di qualcuno non e un lavoro.
   if (argomenti === undefined || !argomenti.some(t => t === '-p' || t === '--print')) return undefined
   const valori = valoriOpzioni(argomenti, OPZIONI_QWEN)
   const cartella = valori.get('-w') ?? valori.get('--cwd')
 
   return {
-    esecutore: 'qwen',
+    esecutore,
     pid,
     durataSec,
-    nome: valori.get('-n') ?? valori.get('--name') ?? (cartella === undefined ? `qwen-${pid}` : ultimoSegmento(cartella)),
+    nome: valori.get('-n') ?? valori.get('--name') ?? (cartella === undefined ? `${esecutore}-${pid}` : ultimoSegmento(cartella)),
     ...(valori.has('-m') || valori.has('--model') ? { modello: valori.get('-m') ?? valori.get('--model') } : {}),
     ...(valori.has('--reasoning-effort') ? { effort: valori.get('--reasoning-effort') } : {}),
     ...(cartella === undefined ? {} : { cartella }),
@@ -313,7 +313,7 @@ function leggiRigaPs(riga: string): ProcessoCodex | undefined {
     (t, i) => t === 'exec' && /(^|\/)codex(\.js)?$/.test(token[i - 1] ?? ''),
   )
   if (posizione < 0) {
-    return durataSec === undefined ? undefined : leggiRigaQwen(Number(m[1]), durataSec, token) ?? leggiRigaCopilot(Number(m[1]), durataSec, token)
+    return durataSec === undefined ? undefined : leggiRigaQwen(Number(m[1]), durataSec, token) ?? leggiRigaQwen(Number(m[1]), durataSec, token, 'qoder') ?? leggiRigaCopilot(Number(m[1]), durataSec, token)
   }
   if (durataSec === undefined) return undefined
   if (/(^|\/)e?grep$/.test(token[0] ?? '')) return undefined

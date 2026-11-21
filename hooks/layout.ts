@@ -19,6 +19,8 @@ export const COLORE_CODEX = 'permission'
 export const COLORE_QWEN = 'success'
 /** Copilot: un quarto colore del tema. */
 export const COLORE_COPILOT = 'suggestion'
+/** Qoder: modelli Qwen, stesso colore di qwen. */
+export const COLORE_QODER = COLORE_QWEN
 const CELLE_MOTO = 4
 const MIN_LAVORO = 14
 /** `▸ apri ✉ scrivi`, `▸ log ↻ riprendi`. */
@@ -54,6 +56,7 @@ function cellaEsecutore(riga: RegiaRiga): Cella {
   if (riga.esecutore === 'codex') return [{ testo: 'codex', colore: COLORE_CODEX }]
   if (riga.esecutore === 'qwen') return [{ testo: 'qwen', colore: COLORE_QWEN }]
   if (riga.esecutore === 'copilot') return [{ testo: 'copilot', colore: COLORE_COPILOT }]
+  if (riga.esecutore === 'qoder') return [{ testo: 'qoder', colore: COLORE_QODER }]
 
   return [{ testo: riga.esecutore, isAttenuato: true }]
 }

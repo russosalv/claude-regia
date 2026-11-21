@@ -1,6 +1,6 @@
 // `/regia models|orchestra|savings|wake [valore]`: mostra un'opzione e la cambia,
 // scrivendola nella config. Vale subito: la config si rilegge a ogni uso.
-// `/regia executors [codex|qwen|copilot on|off]`: lo stesso per gli esecutori esterni.
+// `/regia executors [codex|qwen|copilot|qoder on|off]`: lo stesso per gli esecutori esterni.
 // `/regia team [claude|mixed|external|<quota>]`: lo stesso per la squadra e la sua quota.
 
 import type { EngineInterface } from 'claude-code'

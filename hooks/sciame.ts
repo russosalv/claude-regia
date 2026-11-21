@@ -51,7 +51,7 @@ type Grezzo = { nome?: unknown; prompt?: unknown; esecutore?: unknown; tipo?: un
 /** L'esecutore scritto nella chiamata: la mod non lo cambia. */
 export const MOTIVO_INDICATO = 'indicato'
 
-const ESECUTORI: readonly Esecutore[] = ['claude', 'codex', 'qwen', 'copilot']
+const ESECUTORI: readonly Esecutore[] = ['claude', 'codex', 'qwen', 'copilot', 'qoder']
 
 /** Il nome con cui un compito gira ed e raggiungibile in posta. */
 export const indirizzo = (s: Pick<Sciame, 'id'>, c: Pick<Compito, 'nome'>): string => `${s.id}-${c.nome}`

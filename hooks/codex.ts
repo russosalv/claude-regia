@@ -7,10 +7,14 @@ export const SFORZI = ['low', 'medium', 'high'] as const
 export type Sforzo = (typeof SFORZI)[number]
 
 /** Le CLI che la mod lancia in background: stesso modello di lavoro, cartella di lavoro diversa. */
-export type EsecutoreCli = 'codex' | 'qwen' | 'copilot'
-export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen', 'copilot']
+export type EsecutoreCli = 'codex' | 'qwen' | 'copilot' | 'qoder'
+export const ESECUTORI_CLI: readonly EsecutoreCli[] = ['codex', 'qwen', 'copilot', 'qoder']
 /** Come la mod chiama ogni CLI nei suoi messaggi. */
-export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen', copilot: 'Copilot' }
+export const NOME_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'Codex', qwen: 'Qwen', copilot: 'Copilot', qoder: 'Qoder' }
+/** Il comando di ogni CLI (`qoder` usa `qodercli`). */
+export const COMANDO_CLI: Readonly<Record<EsecutoreCli, string>> = { codex: 'codex', qwen: 'qwen', copilot: 'copilot', qoder: 'qodercli' }
+/** Modello di `qoder_avvia` quando ne la chiamata ne la config ne dicono uno: il Qwen piu forte che Qoder offre (`qodercli --list-models`). */
+export const QODER_MODELLO_PREDEFINITO = 'Qwen4-Max'
 
 /** Il rifiuto di un esecutore tolto da `esecutori` in config: vale per i tool diretti e per lo sciame. */
 export const messaggioSpento = (esecutore: EsecutoreCli): string => `esecutore ${esecutore} spento in config: /regia executors ${esecutore} on`
@@ -23,7 +27,7 @@ export type RichiestaCodex = {
   regole?: string
   sforzo?: Sforzo
   modello?: string
-  /** Solo Qwen e Copilot: il lavoro cambia file (permesso `auto`) o legge soltanto (`default`). */
+  /** Solo Qwen, Copilot e Qoder: il lavoro cambia file (permesso `auto`) o legge soltanto (`default`). */
   scrive?: boolean
 }
 
@@ -73,9 +77,21 @@ export const SCHEMA_COPILOT_AVVIA = {
   },
 } as const
 
+/** Qoder: stesso schema di Qwen (`sforzo` e `modello` valgono per `qodercli`, `scrive` sceglie il permesso). */
+export const SCHEMA_QODER_AVVIA = {
+  ...SCHEMA_QWEN_AVVIA,
+  properties: {
+    ...SCHEMA_QWEN_AVVIA.properties,
+    cartella: { type: 'string', description: 'Cartella in cui Qoder lavora: percorso assoluto (o con ~) di una cartella esistente.' },
+    prompt: { type: 'string', description: 'Il compito per Qoder, completo.' },
+    sforzo: { type: 'string', enum: [...SFORZI], description: 'Sforzo di ragionamento (--reasoning-effort); se manca decide Qoder.' },
+    modello: { type: 'string', description: `Modello di Qoder (-m, per esempio Qwen4-Max, Qwen3.8-Max, Qwen3.8-Flash); se manca, ${QODER_MODELLO_PREDEFINITO} o quello della config della mod.` },
+  },
+} as const
+
 /**
  * Il permesso di `qwen`: la modalita meno permissiva che scrive file e lancia comandi (provato: accept_edits rifiuta git e python).
- * Copilot usa gli stessi due nomi: `copilot-esegui` li traduce nei suoi flag.
+ * Copilot e Qoder usano gli stessi due nomi: `copilot-esegui` li traduce nei suoi flag, `qoder-esegui` li passa a `--permission-mode`.
  */
 export function permessoQwen(scrive: boolean | undefined): 'auto' | 'default' {
   return scrive === false ? 'default' : 'auto'
@@ -209,7 +225,7 @@ export function percorsiLavoro(home: string, nome: string, esecutore: EsecutoreC
     pid: `${cartella}/${nome}.pid`,
     riprendi: `${cartella}/${nome}.riprendi.md`,
     sessione: `${cartella}/${nome}.sessione`,
-    /** Solo Qwen e Copilot: cartella e permesso del lavoro, per riprenderlo. */
+    /** Solo Qwen, Copilot e Qoder: cartella e permesso del lavoro, per riprenderlo. */
     cartellaLavoro: `${cartella}/${nome}.cartella`,
     permesso: `${cartella}/${nome}.permesso`,
     eseguiLog: `${radice}/esegui.log`,

@@ -33,13 +33,16 @@ export type OpzioniAmbiente = {
   file?: Record<string, string>
   agenti?: () => unknown[]
   senzaRepo?: boolean
-  /** Le CLI che su questo PC finto non ci sono: `<cli> --version` risponde 127. */
+  /** Le CLI che su questo PC finto non ci sono: `<cli> --version` risponde 127 (`qoder` vale per `qodercli`). */
   cliAssenti?: readonly string[]
+  /** Qoder su questo PC finto non c'e se non lo si dice: gli altri test non devono vederlo fra gli esecutori usabili. */
+  conQoder?: boolean
 }
 
 export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   const stato: Ambiente = { lanci: [], scritti: new Map(), complete: [], store: new Map(), posta: [], avvisi: [] }
   const file = new Map(Object.entries(opzioni.file ?? {}))
+  const assenti = new Set([...(opzioni.cliAssenti ?? []).map(c => (c === 'qoder' ? 'qodercli' : c)), ...(opzioni.conQoder === true ? [] : ['qodercli'])])
   const esistenti = new Set([REGOLE, ...(opzioni.esistenti ?? []), ...file.keys()])
   mock.env(on, { HOME })
   stato.clock = mock.clock(on, { now: 1_700_000_000_000 })
@@ -90,7 +93,7 @@ export function ambiente(on: On, opzioni: OpzioniAmbiente = {}): Ambiente {
   })
   on('process.run', (_, e) => {
     stato.lanci.push({ argv: e.argv, env: e.init?.env })
-    if (e.argv[1] === '--version' && opzioni.cliAssenti?.includes(e.argv[0] ?? '') === true) {
+    if (e.argv[1] === '--version' && assenti.has(e.argv[0] ?? '')) {
       return { value: { exitCode: 127, stdout: '', stderr: 'command not found', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     const stdout = e.argv[0] === 'ps' ? PS

@@ -1,10 +1,10 @@
-// Gli esecutori esterni (Codex, Qwen Code, Copilot): quali sono accesi in config,
+// Gli esecutori esterni (Codex, Qoder, Qwen Code, Copilot): quali sono accesi in config,
 // quali CLI rispondono su questo PC, la squadra (`/regia team`) e chi fa un compito
 // di sciame che non lo dice. Le regole della scelta stanno in `instradamento.ts`.
 
 import type { EngineInterface } from 'claude-code'
 
-import { ESECUTORI_CLI } from './codex'
+import { COMANDO_CLI, ESECUTORI_CLI } from './codex'
 import type { EsecutoreCli } from './codex'
 import { leggiConfig, leggiHome } from './fonti'
 import { assegnaEsecutori, daChiedere, postiEsterni, promptEsecutori } from './instradamento'
@@ -51,7 +51,7 @@ export function testoEsecutori(stati: readonly StatoEsecutore[]): string {
     `Esecutori esterni usabili ora: ${usabili.length === 0 ? 'nessuno, negli sciami lavora solo Claude' : usabili.join(', ')}.`,
     ...stati.map(s => `  ${s.nome}: ${s.isAcceso ? 'acceso' : 'spento in config'} · ${s.cli === undefined ? 'CLI non trovata' : `CLI trovata${s.cli === '' ? '' : ` (${s.cli})`}`}`),
     'In uno sciame un compito senza `esecutore` lo riceve dalla mod, secondo la squadra impostata (/regia team): Claude oppure uno degli usabili. Uno spento viene rifiutato anche se indicato o chiamato con il suo tool.',
-    'Si cambia con /regia executors codex|qwen|copilot on|off ("esecutori" in ~/.claude/regia/config.json). /regia codex|qwen on|off riguarda invece il plugin per Claude Code.',
+    'Si cambia con /regia executors codex|qwen|copilot|qoder on|off ("esecutori" in ~/.claude/regia/config.json). /regia codex|qwen on|off riguarda invece il plugin per Claude Code.',
   ].join('\n')
 }
 
@@ -61,7 +61,7 @@ type ConfigSquadra = Pick<ConfigRegia, 'squadra' | 'squadraQuota'>
 export const nomeSquadra = (c: ConfigSquadra): string => `${NOME_SQUADRA[c.squadra]}${c.squadra === 'mista' ? ` ${c.squadraQuota}%` : ''}`
 
 const SPIEGA_SQUADRA: Readonly<Record<Squadra, (quota: number) => string>> = {
-  claude: () => 'Sviluppa solo Claude, come subagenti (Agent) e come compiti di sciame: un compito senza `esecutore` va sempre a Claude. Gli esecutori esterni (Codex, Qwen Code, Copilot) lavorano solo se li nomini: `esecutore` in un compito di sciame, oppure codex_avvia, qwen_avvia, copilot_avvia.',
+  claude: () => 'Sviluppa solo Claude, come subagenti (Agent) e come compiti di sciame: un compito senza `esecutore` va sempre a Claude. Gli esecutori esterni (Codex, Qoder, Qwen Code, Copilot) lavorano solo se li nomini: `esecutore` in un compito di sciame, oppure codex_avvia, qoder_avvia, qwen_avvia, copilot_avvia.',
   mista: quota => `Claude e la squadra di sviluppo, come subagenti (Agent) e come compiti di sciame; gli esecutori esterni sono rinforzi. In uno sciame la mod tiene su Claude lo sviluppo che chiede di capire il progetto e da agli esterni cio che gli si addice (lavoro meccanico o in blocco, documentazione, test, revisioni indipendenti, seconde implementazioni, compiti isolati e ben specificati): al massimo il ${quota}% dei compiti che assegna lei in uno sciame.`,
   esterni: () => 'In uno sciame i compiti autosufficienti senza `esecutore` vanno agli esecutori esterni, senza tetto; a Claude resta cio che e legato alla sessione (i suoi tool e server MCP, le skill, i tipi di agente, cio che si e detto).',
 }
@@ -125,10 +125,10 @@ async function trovaInNvm($: EngineInterface, home: string, comando: string): Pr
 }
 
 async function cliDi($: EngineInterface, home: string | undefined, esecutore: EsecutoreCli): Promise<string | undefined> {
-  const versione = await versioneDi($, esecutore)
+  const versione = await versioneDi($, COMANDO_CLI[esecutore])
   if (versione !== undefined || home === undefined || !ANCHE_IN_NVM.includes(esecutore)) return versione
 
-  return trovaInNvm($, home, esecutore)
+  return trovaInNvm($, home, COMANDO_CLI[esecutore])
 }
 
 /** Quanto vale una risposta delle CLI: uno sciame non le interroga a ogni giro. */

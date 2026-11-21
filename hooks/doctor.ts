@@ -2,6 +2,7 @@
 
 import type { EngineInterface } from 'claude-code'
 
+import { QODER_MODELLO_PREDEFINITO } from './codex'
 import { rigaDoctorCompatta } from './compatta'
 import type { Contesto } from './compatta'
 import { leggiCli, nomeSquadra, rigaEsecutori, rigaSquadra, statoEsecutori, versioneDi } from './esecutori'
@@ -30,6 +31,7 @@ export type DatiDoctor = {
   codex?: string
   qwen?: string
   copilot?: string
+  qoder?: string
   /** Modalita e presenza della sessione; senza, i predefiniti. */
   profilo?: StatoProfilo
   python?: string
@@ -77,12 +79,13 @@ export function testoDoctor(d: DatiDoctor): string {
     `Codex: ${d.codex === undefined ? 'NON trovato — codex_avvia e i compiti Codex non partiranno' : `${d.codex}, modello ${c.codexModello ?? 'deciso da Codex'}`}.`,
     `Qwen: ${d.qwen === undefined ? 'NON trovato — qwen_avvia e i compiti Qwen non partiranno' : d.qwen}.`,
     `Copilot: ${d.copilot === undefined ? 'NON trovato — copilot_avvia e i compiti Copilot non partiranno' : `${d.copilot}, modello ${c.copilotModello ?? 'deciso da Copilot'}`}.`,
+    `Qoder: ${d.qoder === undefined ? 'NON trovato — qoder_avvia e i compiti Qoder non partiranno' : `${d.qoder}, modello ${c.qoderModello ?? QODER_MODELLO_PREDEFINITO}`}.`,
     rigaEsecutori(statoEsecutori(c.esecutori, d)),
     `Posta dai Codex: ${d.python === undefined ? 'python3 NON trovato — la CLI posta non funziona' : d.python}.`,
     `Config: ${d.isConfigPresente ? d.percorsoConfig : `nessun file, valori predefiniti (${d.percorsoConfig})`}.`,
     ...d.avvisi.map(a => `Attenzione: ${a}`),
     '',
-    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia team claude|mixed|external|<quota>, /regia models on|off, /regia savings on|off, /regia wake on|off, /regia compact on|off|<soglia>, /regia executors codex|qwen|copilot on|off.',
+    'Si cambia con /regia long|medium|quick, /regia orchestra strict|guide|off, /regia team claude|mixed|external|<quota>, /regia models on|off, /regia savings on|off, /regia wake on|off, /regia compact on|off|<soglia>, /regia executors codex|qwen|copilot|qoder on|off.',
   ].join('\n')
 }
 

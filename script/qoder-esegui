@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Lancia un lavoro Qoder CLI (qodercli, modelli Qwen) per la mod regia (tool qoder_avvia): nice, un solo tentativo,
+# righe di inizio e fine in esegui.log. Il prompt entra da stdin (<nome>.prompt.md): niente limite di argv e niente prompt in `ps`.
+# Con REGIA_RIPRENDI=<id sessione qoder> riprende quella sessione con il messaggio di <nome>.riprendi.md (qoder_riprendi).
+# Permesso: `auto` scrive file e lancia comandi (provato: accept_edits rifiuta i comandi); `default` legge soltanto
+# (provato: Write e Bash vengono negati). Lo stesso del Qwen Code, con le stesse parole.
+# Un modello sconosciuto non e un errore per qodercli: avvisa su stderr (nel log) e ripiega su `auto`.
+# Uso: qoder-esegui <nome> <cartella> <cartella-lavoro> <modello|""> <sforzo|""> <esegui.log> <permesso> [ramo-base]
+set -u
+# qodercli sta in ~/.local/bin, che non e nel PATH dei processi lanciati dalla mod.
+if ! command -v qodercli >/dev/null 2>&1 && [ -x "$HOME/.local/bin/qodercli" ]; then PATH="$HOME/.local/bin:$PATH"; export PATH; fi
+n=$1; W=$2; D=$3; M=$4; S=$5; L=$6; P=${7:-auto}; B=${8:-main}
+R=${REGIA_RIPRENDI:-}
+# Tetto di sicurezza (secondi) se la mod non gira: la sorveglianza ferma comunque chi tace da stalloMinuti.
+T=${REGIA_QODER_TIMEOUT:-14400}
+cd "$D" || exit 1
+modello=(); [ -n "$M" ] && modello=(-m "$M")
+sforzo=(); [ -n "$S" ] && sforzo=(--reasoning-effort "$S")
+# Tutto cio che non e `auto` legge soltanto.
+[ "$P" = auto ] || P=default
+# macOS non ha timeout: senza, resta la sorveglianza.
+tetto=(); command -v timeout >/dev/null 2>&1 && tetto=(timeout "$T")
+export REGIA_NOME="$n"
+echo $$ > "$n.pid"
+echo "$P" > "$n.permesso"
+echo "$W" > "$n.cartella"
+if [ -n "$R" ]; then
+  # Il giro di prima resta in <nome>.storico.log; l'esito vuoto dice se questo giro ha risposto.
+  [ -f "$n.log" ] && cat "$n.log" >> "$n.storico.log"
+  [ -f "$n.esito.md" ] && { printf '\n--- esito del giro precedente ---\n'; cat "$n.esito.md"; } >> "$n.storico.log"
+  rm -f "$n.esito.md"
+  sessione=(--resume "$R"); entrata="$n.riprendi.md"
+else
+  # L'id lo scegliamo noi (--session-id): serve subito a qoder_riprendi e alla sorveglianza.
+  id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-Z' 'a-z')
+  echo "$id" > "$n.sessione"
+  sessione=(--session-id "$id"); entrata="$n.prompt.md"
+fi
+echo "$(date +%H:%M) inizio $n" >> "$L"
+# -n e -w servono anche a `ps`: la mod riconosce il lavoro dal nome. La ripresa cerca la sessione nella cartella del lavoro.
+# ${x[@]+"${x[@]}"}: con set -u la bash 3.2 di macOS rifiuta un array vuoto.
+( cd "$W" && nice -n 10 ${tetto[@]+"${tetto[@]}"} qodercli ${modello[@]+"${modello[@]}"} ${sforzo[@]+"${sforzo[@]}"} --permission-mode "$P" "${sessione[@]}" -n "$n" -w "$W" -p < "$D/$entrata" > "$D/$n.esito.md" 2> "$D/$n.log" )
+rc=$?
+# Una risposta vuota con exit 0 e un guasto (API, rete, accesso): meglio che lo sciame lo rilanci.
+[ "$rc" -eq 0 ] && [ ! -s "$D/$n.esito.md" ] && rc=1
+commit=$(git -C "$W" rev-list --count "$B..HEAD" 2>/dev/null || echo "?")
+echo "$(date +%H:%M) fine $n (exit $rc, commit $commit)" >> "$L"
+rm -f "$n.pid"
